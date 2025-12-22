@@ -1,4 +1,6 @@
 import json
+import requests
+import re
 import customtkinter as ctk
 from customtkinter import filedialog
 from diagnostics import register_log, diagnostics_path
@@ -247,11 +249,12 @@ class Firmware(ctk.CTkToplevel):
         self.parent = parent
 
         self.title("Firmware")
-        self.geometry("600x350")
+        self.geometry("600x450")
         self.resizable(False, False)
         self.transient(parent)
         self.focus()
 
+        self.repo_url = "https://github.com/zyinggggg/fcd-gui-tests"
         self.grid_rowconfigure(0, weight=100)
         self.grid_columnconfigure(0, weight=100)
 
@@ -271,28 +274,125 @@ class Firmware(ctk.CTkToplevel):
         self.r1_c0 = ctk.CTkLabel(master=self.frame0, text="Repository URL:")
         self.r1_c0.grid(row=1, column=0, sticky="w", padx=10, pady=2)
 
-        self.r1_c1 = ctk.CTkEntry(master=self.frame0, justify="right", width=300)
-        self.r1_c1.grid(row=1, column=1, sticky="e", padx=10, pady=2)
+        self.r1_c1 = ctk.CTkEntry(master=self.frame0, justify="left", width=300)
+        self.r1_c1.grid(row=1, column=1, sticky="e", padx=10, pady=(1, 2))
+        self.r1_c1.insert(0, self.repo_url)
 
         self.r2_c0 = ctk.CTkLabel(master=self.frame0, text="Check for Updates:")
         self.r2_c0.grid(row=2, column=0, sticky="w", padx=10, pady=2)
 
-        self.r2_c1 = ctk.CTkButton(master=self.frame0, text="↻", width=121)
-        self.r2_c1.grid(row=2, column=1, sticky="e", padx=10, pady=2)
+        self.r2_c1 = ctk.CTkButton(master=self.frame0, text="↻", width=121, command=self.check_for_updates)
+        self.r2_c1.grid(row=2, column=1, sticky="e", padx=10, pady=(4, 2))
 
+        self.update_status = None
+        
         self.r2_c1.bind("<Enter>", self.on_enter)
         self.r2_c1.bind("<Leave>", self.on_leave)
 
-        self.check_for_updates()
+        self.status_frame = ctk.CTkScrollableFrame(master=self.frame0, fg_color="#F9F9FA", height=300)
+        self.status_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
+        self.status_frame.grid_columnconfigure(0, weight=1)
+
+        self.status = ctk.CTkLabel(master=self.status_frame, text="Click '↻' to see status", justify="left", anchor="w")
+        self.status.grid(row=0, column=0, sticky="w", padx=5, pady=0)
 
     def on_enter(self, event):
-        if self.r2_c1.cget("text") == "↻":
-            self.r2_c1.configure(text="Up to Date")
+        if self.r2_c1.cget("text") in ["↻", "Up to Date", "Install"]:
+            self.r2_c1.configure(text="↻")
         
     def on_leave(self, event):
-        if self.r2_c1.cget("text") == "Up to Date":
-            self.r2_c1.configure(text="↻")
+        if self.r2_c1.cget("text") == "↻":
+            if self.update_status == "up_to_date":
+                self.r2_c1.configure(text="Up to Date")
+            elif self.update_status == "update_available":
+                self.r2_c1.configure(text="Install")
+            else:
+                pass
 
+    def check_for_updates(self):
+        try:
+            from main import version
+            current_version_parts = str(version).strip().split(".")
+            current_version = (int(current_version_parts[0]), int(current_version_parts[1]) if len(current_version_parts) > 1 else 0)
+
+            url_parts = self.repo_url.rstrip("/").replace(".git", "").split("/")
+            owner = url_parts[-2]
+            repo_name = url_parts[-1]
+
+            raw_url = f"https://raw.githubusercontent.com/{owner}/{repo_name}/main/application/main.py"
+            response = requests.get(raw_url, timeout=10)
+            
+            if response.status_code == 200:
+                content = response.text
+                
+                version_match = re.search(r"version\s*=\s*['\"]?([\d\.]+)['\"]?", content)
+                release_date_match = re.search(r'release_date\s*=\s*["\']([^"\']+)["\']', content)
+                if version_match:
+                    repo_version_parts = version_match.group(1).strip().split(".")
+                    repo_version = (int(repo_version_parts[0]), int(repo_version_parts[1]) if len(repo_version_parts) > 1 else 0)
+                    if release_date_match:
+                        repo_release_date =  release_date_match.group(1)
+
+                    if repo_version > current_version:
+                        self.update_status = "update_available"
+                        self.new_version_info(owner, repo_name, repo_version, repo_release_date)
+                    else:
+                        self.update_status = "up_to_date"
+                        self.status.configure(text="You are on the latest version.")
+            else:
+                print(f"Failed to reach GitHub. Status: {response.status_code}")
+
+        except Exception:
+            pass
+    
+    def new_version_info(self, owner, repo_name, repo_version, repo_release_date):
+        try:
+            api_url = f"https://api.github.com/repos/{owner}/{repo_name}/commits?sha=main"
+            response = requests.get(api_url, timeout=10)
+
+            if response.status_code != 200:
+                return
+            
+            commits = response.json()
+
+            updates_text = (f"New version v{'.'.join(map(str, repo_version))} "f"is available! ({repo_release_date})\n\n")
+
+            commit_count = 0
+            for commit in commits[:10]:
+                commit_msg = commit.get('commit', {}).get('message', '').strip()
+                commit_date = commit.get('commit', {}).get('author', {}).get('date', '')
+                commit_author = commit.get('commit', {}).get('author', {}).get('name', 'Unknown')
+                
+                if commit_date:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.strptime(commit_date, "%Y-%m-%dT%H:%M:%SZ")
+                        commit_date = dt.strftime("%Y-%m-%d %H:%M")
+                    except:
+                        pass
+                
+                lines = commit_msg.split('\n')
+                first_line = lines[0]
+                
+                updates_text += f"• {first_line}\n"
+                if commit_date:
+                    updates_text += f"  ({commit_date} by {commit_author})\n"
+                
+                if len(lines) > 1:
+                    for line in lines[1:]:
+                        if line.strip():
+                            changes_text += f"  {line.strip()}\n"
+                
+                updates_text += "\n"
+                commit_count += 1
+            
+            if commit_count == 0:
+                updates_text += "No recent changes found.\n"
+            
+            self.status.configure(text=updates_text)
+            
+        except Exception:
+            pass
 
 class AdvancedControl(ctk.CTkToplevel):
     def __init__(self, parent):

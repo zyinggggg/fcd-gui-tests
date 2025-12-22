@@ -1,7 +1,7 @@
 # Author: Mehmet B. Sefer (Technical Project Specialist II)
 # Organization: NexGenPPT @ Iowa State University
 
-version = 1.1
+version = 1.0
 release_date = "12/25/2025"
 
 import os, json
