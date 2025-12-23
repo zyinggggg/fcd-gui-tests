@@ -1,8 +1,16 @@
 import json
 import requests
 import re
+import os
+import sys
+import tempfile
+import zipfile
+import io
+import subprocess
+from pathlib import Path
 import customtkinter as ctk
 from customtkinter import filedialog
+#from CTkMessagebox import CTkMessagebox
 from diagnostics import register_log, diagnostics_path
 
 class AdvancedPerformance(ctk.CTkToplevel):
@@ -281,10 +289,12 @@ class Firmware(ctk.CTkToplevel):
         self.r2_c0 = ctk.CTkLabel(master=self.frame0, text="Check for Updates:")
         self.r2_c0.grid(row=2, column=0, sticky="w", padx=10, pady=2)
 
-        self.r2_c1 = ctk.CTkButton(master=self.frame0, text="↻", width=121, command=self.check_for_updates)
+        self.r2_c1 = ctk.CTkButton(master=self.frame0, text="↻", width=121, command=self.on_button_click)
         self.r2_c1.grid(row=2, column=1, sticky="e", padx=10, pady=(4, 2))
 
         self.update_status = None
+        self.owner = None
+        self.repo_name = None
         
         self.r2_c1.bind("<Enter>", self.on_enter)
         self.r2_c1.bind("<Leave>", self.on_leave)
@@ -293,7 +303,7 @@ class Firmware(ctk.CTkToplevel):
         self.status_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
         self.status_frame.grid_columnconfigure(0, weight=1)
 
-        self.status = ctk.CTkLabel(master=self.status_frame, text="Click '↻' to see status", justify="left", anchor="w")
+        self.status = ctk.CTkLabel(master=self.status_frame, text="Click '↻' to check for updates.", justify="left", anchor="w")
         self.status.grid(row=0, column=0, sticky="w", padx=5, pady=0)
 
     def on_enter(self, event):
@@ -308,18 +318,29 @@ class Firmware(ctk.CTkToplevel):
                 self.r2_c1.configure(text="Install")
             else:
                 pass
-
+    
+    def on_button_click(self):
+        """Handle button click - either check for updates or install"""
+        if self.update_status == "update_available":
+            self.install_update()
+        else:
+            self.check_for_updates()
+    
     def check_for_updates(self):
+        if not self.check_internet_connection():
+            self.status.configure(text="⚠️ No Internet Connection! Please check your internet connection and try again.")
+            return
+        
         try:
             from main import version
             current_version_parts = str(version).strip().split(".")
             current_version = (int(current_version_parts[0]), int(current_version_parts[1]) if len(current_version_parts) > 1 else 0)
 
             url_parts = self.repo_url.rstrip("/").replace(".git", "").split("/")
-            owner = url_parts[-2]
-            repo_name = url_parts[-1]
+            self.owner = url_parts[-2]
+            self.repo_name = url_parts[-1]
 
-            raw_url = f"https://raw.githubusercontent.com/{owner}/{repo_name}/main/application/main.py"
+            raw_url = f"https://raw.githubusercontent.com/{self.owner}/{self.repo_name}/main/application/main.py"
             response = requests.get(raw_url, timeout=10)
             
             if response.status_code == 200:
@@ -335,7 +356,7 @@ class Firmware(ctk.CTkToplevel):
 
                     if repo_version > current_version:
                         self.update_status = "update_available"
-                        self.new_version_info(owner, repo_name, repo_version, repo_release_date)
+                        self.new_version_info(self.owner, self.repo_name, repo_version, repo_release_date)
                     else:
                         self.update_status = "up_to_date"
                         self.status.configure(text="You are on the latest version.")
@@ -393,6 +414,58 @@ class Firmware(ctk.CTkToplevel):
             
         except Exception:
             pass
+    
+    def install_update(self):
+        try: 
+            self.status.configure(text="⬇️ Downloading update...")
+            response = requests.get("https://api.github.com/repos/zyinggggg/fcd-gui-tests/zipball/main", stream=True)
+            response.raise_for_status()
+
+            temp_dir = tempfile.mkdtemp()
+            zip_path = os.path.join(temp_dir, "update.zip")
+
+            with open("fcd-gui-tests_main.zip", 'wb') as f:
+                # Write the file in chunks
+                for chunk in response.iter_content(chunk_size=1024): 
+                    if chunk: # filter out keep-alive new chunks
+                        f.write(chunk)
+
+            self.status.configure(text="📦 Extracting update...")
+            with zipfile.ZipFile(zip_path, "r") as z:
+                z.extractall(temp_dir)
+
+            # The extracted folder usually has a dynamic name like owner-repo-hash
+            extracted_folder = next(Path(temp_dir).glob("*"))
+            app_dir = Path(sys.argv[0]).parent.resolve()
+
+            self.status.configure(text="⚙️ Installing update...")
+
+            # Copy files from extracted folder to app folder
+            for item in extracted_folder.iterdir():
+                dest = app_dir / item.name
+                if item.is_dir():
+                    if dest.exists():
+                        # Remove existing folder
+                        import shutil
+                        shutil.rmtree(dest)
+                    shutil.copytree(item, dest)
+                else:
+                    # Overwrite files
+                    import shutil
+                    shutil.copy2(item, dest)
+
+            self.status.configure(text="✅ Update installed. Please restart the app")
+
+        except Exception:
+            pass
+        
+    def check_internet_connection(self):
+        try:
+            requests.head(self.repo_url, timeout=5)
+            return True
+        except Exception:
+            #CTkMessagebox(title="No Internet Connection", message="Please connect to the internet and try again.", icon="warning")
+            return False
 
 class AdvancedControl(ctk.CTkToplevel):
     def __init__(self, parent):
