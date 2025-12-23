@@ -1,6 +1,9 @@
 // Author: Mehmet B. Sefer (Technical Project Specialist II)
 // Organization: NexGenPPT @ Iowa State University
 
+version = 1.1
+release_date = "12/25/2025"
+  
 #include <MobaTools.h>
 #include <Adafruit_ADS1X15.h>
 #include <ArduinoJson.h>
