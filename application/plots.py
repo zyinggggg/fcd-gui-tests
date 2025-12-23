@@ -3,12 +3,11 @@ import matplotlib
 import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 import platform
+import mplcyberpunk
+import matplotlib.pyplot as plt
 
 if platform.system() == 'Darwin': # Use TkAgg backend on macOS
     matplotlib.use('TkAgg')
-
-import matplotlib.pyplot as plt
-import mplcyberpunk
 
 plt.style.use("cyberpunk")
 

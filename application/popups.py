@@ -295,6 +295,7 @@ class Firmware(ctk.CTkToplevel):
         self.update_status = None
         self.owner = None
         self.repo_name = None
+        self.repo_version = None
         
         self.r2_c1.bind("<Enter>", self.on_enter)
         self.r2_c1.bind("<Leave>", self.on_leave)
@@ -350,13 +351,13 @@ class Firmware(ctk.CTkToplevel):
                 release_date_match = re.search(r'release_date\s*=\s*["\']([^"\']+)["\']', content)
                 if version_match:
                     repo_version_parts = version_match.group(1).strip().split(".")
-                    repo_version = (int(repo_version_parts[0]), int(repo_version_parts[1]) if len(repo_version_parts) > 1 else 0)
+                    self.repo_version = (int(repo_version_parts[0]), int(repo_version_parts[1]) if len(repo_version_parts) > 1 else 0)
                     if release_date_match:
                         repo_release_date =  release_date_match.group(1)
 
-                    if repo_version > current_version:
+                    if self.repo_version > current_version:
                         self.update_status = "update_available"
-                        self.new_version_info(self.owner, self.repo_name, repo_version, repo_release_date)
+                        self.new_version_info(self.owner, self.repo_name, self.repo_version, repo_release_date)
                     else:
                         self.update_status = "up_to_date"
                         self.status.configure(text="You are on the latest version.")
@@ -416,49 +417,174 @@ class Firmware(ctk.CTkToplevel):
             pass
     
     def install_update(self):
-        try: 
-            self.status.configure(text="⬇️ Downloading update...")
-            response = requests.get("https://api.github.com/repos/zyinggggg/fcd-gui-tests/zipball/main", stream=True)
-            response.raise_for_status()
-
-            temp_dir = tempfile.mkdtemp()
-            zip_path = os.path.join(temp_dir, "update.zip")
-
-            with open("fcd-gui-tests_main.zip", 'wb') as f:
-                # Write the file in chunks
-                for chunk in response.iter_content(chunk_size=1024): 
-                    if chunk: # filter out keep-alive new chunks
-                        f.write(chunk)
-
-            self.status.configure(text="📦 Extracting update...")
-            with zipfile.ZipFile(zip_path, "r") as z:
-                z.extractall(temp_dir)
-
-            # The extracted folder usually has a dynamic name like owner-repo-hash
-            extracted_folder = next(Path(temp_dir).glob("*"))
-            app_dir = Path(sys.argv[0]).parent.resolve()
-
-            self.status.configure(text="⚙️ Installing update...")
-
-            # Copy files from extracted folder to app folder
-            for item in extracted_folder.iterdir():
-                dest = app_dir / item.name
-                if item.is_dir():
-                    if dest.exists():
-                        # Remove existing folder
-                        import shutil
-                        shutil.rmtree(dest)
-                    shutil.copytree(item, dest)
-                else:
-                    # Overwrite files
-                    import shutil
-                    shutil.copy2(item, dest)
-
-            self.status.configure(text="✅ Update installed. Please restart the app")
-
-        except Exception:
-            pass
-        
+        """Download the latest version from GitHub"""
+        try:
+            import os
+            import zipfile
+            import shutil
+            from datetime import datetime
+            
+            self.status.configure(text="⏳ Downloading update...\n\nPlease wait...", text_color="blue")
+            self.r2_c1.configure(state="disabled")
+            self.update()  # Force GUI update
+            
+            # Create download URL for the repository zip
+            zip_url = f"https://github.com/{self.owner}/{self.repo_name}/archive/refs/heads/main.zip"
+            
+            # Download the zip file
+            response = requests.get(zip_url, timeout=30)
+            
+            if response.status_code != 200:
+                self.status.configure(text=f"❌ Failed to download update.\n\nHTTP Status: {response.status_code}", text_color="red")
+                self.r2_c1.configure(state="normal")
+                return
+            
+            # Get directories:
+            # __file__ is in: /path/to/project/application/popups.py
+            # application_dir: /path/to/project/application
+            # parent_dir: /path/to/project
+            application_dir = os.path.dirname(os.path.abspath(__file__))
+            parent_dir = os.path.dirname(application_dir)
+            
+            # Create temporary paths in parent directory
+            temp_zip = os.path.join(parent_dir, "temp_update.zip")
+            temp_extract = os.path.join(parent_dir, "temp_extract")
+            
+            # Save the zip file
+            with open(temp_zip, 'wb') as f:
+                f.write(response.content)
+            
+            self.status.configure(text="⏳ Extracting files...\n\nPlease wait...", text_color="blue")
+            self.update()
+            
+            # Extract the zip file
+            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                zip_ref.extractall(temp_extract)
+            
+            # Find the extracted folder (usually repo-name-main)
+            extracted_folder = os.path.join(temp_extract, f"{self.repo_name}-main")
+            
+            if not os.path.exists(extracted_folder):
+                self.status.configure(text="❌ Error: Could not find extracted folder.", text_color="red")
+                self.r2_c1.configure(state="normal")
+                os.remove(temp_zip)
+                shutil.rmtree(temp_extract)
+                return
+            
+            # Define source folders in the extracted repo
+            application_src = os.path.join(extracted_folder, "application")
+            controller_src = os.path.join(extracted_folder, "controller")
+            
+            # Verify application folder exists
+            if not os.path.exists(application_src):
+                self.status.configure(text="❌ Error: 'application' folder not found in downloaded files.", text_color="red")
+                self.r2_c1.configure(state="normal")
+                os.remove(temp_zip)
+                shutil.rmtree(temp_extract)
+                return
+            
+            # Create backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = os.path.join(parent_dir, f"backup_{timestamp}")
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            self.status.configure(text=f"⏳ Creating backup...\n\nBackup location: backup_{timestamp}", text_color="blue")
+            self.update()
+            
+            # Backup application folder
+            application_backup = os.path.join(backup_dir, "application")
+            shutil.copytree(application_dir, application_backup, dirs_exist_ok=True)
+            
+            # Backup controller folder if it exists
+            controller_dir = os.path.join(parent_dir, "controller")
+            if os.path.exists(controller_dir):
+                controller_backup = os.path.join(backup_dir, "controller")
+                shutil.copytree(controller_dir, controller_backup, dirs_exist_ok=True)
+            
+            self.status.configure(text="⏳ Installing update...\n\nReplacing application files...", text_color="blue")
+            self.update()
+            
+            # Update application folder - copy all files from extracted application to actual application
+            files_updated = 0
+            for item in os.listdir(application_src):
+                src = os.path.join(application_src, item)
+                dst = os.path.join(application_dir, item)  # Copy to application_dir, not parent_dir
+                
+                try:
+                    if os.path.isfile(src):
+                        shutil.copy2(src, dst)
+                        files_updated += 1
+                    elif os.path.isdir(src):
+                        if os.path.exists(dst):
+                            shutil.rmtree(dst)
+                        shutil.copytree(src, dst)
+                        files_updated += 1
+                except Exception as e:
+                    self.status.configure(
+                        text=f"❌ Error copying {item}:\n{str(e)}",
+                        text_color="red"
+                    )
+                    self.r2_c1.configure(state="normal")
+                    return
+            
+            # Update controller folder if it exists in the download
+            controller_updated = False
+            if os.path.exists(controller_src):
+                self.status.configure(text="⏳ Installing update...\n\nReplacing controller files...", text_color="blue")
+                self.update()
+                
+                try:
+                    # Remove old controller folder
+                    if os.path.exists(controller_dir):
+                        shutil.rmtree(controller_dir)
+                    # Copy new controller folder
+                    shutil.copytree(controller_src, controller_dir)
+                    controller_updated = True
+                except Exception as e:
+                    self.status.configure(
+                        text=f"⚠️ Warning: Controller update failed:\n{str(e)}\n\nApplication updated successfully.",
+                        text_color="orange"
+                    )
+            
+            # Clean up temporary files
+            try:
+                os.remove(temp_zip)
+                shutil.rmtree(temp_extract)
+            except:
+                pass
+            
+            # Success message
+            success_msg = f"✅ Update installed successfully!\n\n"
+            success_msg += f"Version: v{'.'.join(map(str, self.repo_version))}\n"
+            success_msg += f"Backup: backup_{timestamp}\n"
+            success_msg += f"Application files: {files_updated} updated\n"
+            if controller_updated:
+                success_msg += f"Controller folder: Updated ✓\n"
+            success_msg += f"\n⚠️ Please restart the application now."
+            
+            self.status.configure(text=success_msg, text_color="green")
+            
+            self.update_status = "installed"
+            self.r2_c1.configure(text="✓ Installed", state="normal")
+            
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            self.status.configure(
+                text=f"❌ Error during installation:\n\n{str(e)}\n\nDetails:\n{error_details[:300]}",
+                text_color="red"
+            )
+            self.r2_c1.configure(state="normal")
+            
+            # Cleanup on error
+            try:
+                if os.path.exists(temp_zip):
+                    os.remove(temp_zip)
+                if os.path.exists(temp_extract):
+                    shutil.rmtree(temp_extract)
+            except:
+                pass
+            
     def check_internet_connection(self):
         try:
             requests.head(self.repo_url, timeout=5)
