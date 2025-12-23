@@ -1,8 +1,8 @@
 # Author: Mehmet B. Sefer (Technical Project Specialist II)
 # Organization: NexGenPPT @ Iowa State University
 
-version = 1.1
-release_date = "12/25/2025"
+version = 1.0
+release_date = "12/20/2025"
 
 import os, json
 import customtkinter as ctk
