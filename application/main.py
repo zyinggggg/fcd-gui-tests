@@ -2,14 +2,41 @@
 # Organization: NexGenPPT @ Iowa State University
 
 version = 1.0
-release_date = "12/20/2025"
+release_date = "12/25/2025"
 
-import os, json
+try:
+    import pyi_splash
+    splash_available = True
+except ModuleNotFoundError:
+    splash_available = False
+
+if splash_available:
+    pyi_splash.update_text("Loading modules...")
+    import time
+    time.sleep(0.5)
+
+import os, json, sys
+from pathlib import Path
+os.environ['MPLCONFIGDIR'] = str(Path.home())+"/.matplotlib/"
 import customtkinter as ctk
 from frames import HealthFrame, PerformanceFrame, SettingsFrame, ControlFrame, SurfaceFrame, PIDFrame
 from sync import Sync
 from data import default_data_map
 from diagnostics import log
+
+if splash_available:
+    pyi_splash.update_text("Starting application...")
+    time.sleep(0.5)
+    pyi_splash.close()
+
+def resource_path(relative_path):
+    """Get absolute path to resource (dev + PyInstaller)"""
+    try:
+        base_path = sys._MEIPASS  # PyInstaller temp folder
+    except AttributeError:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+
+    return os.path.join(base_path, relative_path)
 
 class App(ctk.CTk):
     def __init__(self):
@@ -24,12 +51,14 @@ class App(ctk.CTk):
         self._state_before_windows_set_titlebar_color = 'zoomed'
 
         # ========== GLOBAL STYLING ==========
-        self.theme_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "theme.json")
+        #self.theme_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "theme.json")
+        self.theme_path = resource_path("data/theme.json")
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme(self.theme_path)
 
         # ========== LOAD JSON ===============
-        self.config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        #self.config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        self.config_path = resource_path("data/config.json")
         try:
             with open(self.config_path, "r") as f:
                 self.config = json.load(f)
@@ -97,4 +126,5 @@ class App(ctk.CTk):
 
 if __name__ == "__main__":
     app = App()
+
     app.mainloop()

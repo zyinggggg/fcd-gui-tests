@@ -1,10 +1,7 @@
 import json
 import requests
-import re
-import os
-import sys
-import tempfile
-import zipfile
+import re, os, sys
+import tempfile, zipfile
 import io
 import subprocess
 from pathlib import Path
@@ -262,13 +259,11 @@ class Firmware(ctk.CTkToplevel):
         self.transient(parent)
         self.focus()
 
-        self.repo_url = "https://github.com/zyinggggg/fcd-gui-tests"
         self.grid_rowconfigure(0, weight=100)
         self.grid_columnconfigure(0, weight=100)
 
         self.frame0 = ctk.CTkFrame(self, fg_color="#FFFFFF")
         self.frame0.grid(row=0, column=0, rowspan=1, columnspan=1, sticky="nsew", padx=(10, 5), pady=(10, 10))
-
         self.frame0.grid_columnconfigure(0, weight=1)
         self.frame0.grid_columnconfigure(1, weight=1)
     
@@ -284,88 +279,117 @@ class Firmware(ctk.CTkToplevel):
 
         self.r1_c1 = ctk.CTkEntry(master=self.frame0, justify="left", width=300)
         self.r1_c1.grid(row=1, column=1, sticky="e", padx=10, pady=(1, 2))
+        self.repo_url = "https://github.com/zyinggggg/fcd-gui-tests"
         self.r1_c1.insert(0, self.repo_url)
-
-        self.r2_c0 = ctk.CTkLabel(master=self.frame0, text="Check for Updates:")
-        self.r2_c0.grid(row=2, column=0, sticky="w", padx=10, pady=2)
-
-        self.r2_c1 = ctk.CTkButton(master=self.frame0, text="↻", width=121, command=self.on_button_click)
-        self.r2_c1.grid(row=2, column=1, sticky="e", padx=10, pady=(4, 2))
 
         self.update_status = None
         self.owner = None
         self.repo_name = None
         self.repo_version = None
-        
-        self.r2_c1.bind("<Enter>", self.on_enter)
-        self.r2_c1.bind("<Leave>", self.on_leave)
+        self.download_url = None
+        self.auto_checked = False
 
-        self.status_frame = ctk.CTkScrollableFrame(master=self.frame0, fg_color="#F9F9FA", height=300)
-        self.status_frame.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
+        self.status_frame = ctk.CTkScrollableFrame(master=self.frame0, fg_color="#F9F9FA", height=290)
+        self.status_frame.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=10, pady=10)
         self.status_frame.grid_columnconfigure(0, weight=1)
 
-        self.status = ctk.CTkLabel(master=self.status_frame, text="Click '↻' to check for updates.", justify="left", anchor="w")
+        self.status = ctk.CTkLabel(master=self.status_frame, text="", justify="left", anchor="w")
         self.status.grid(row=0, column=0, sticky="w", padx=5, pady=0)
 
+        self.refresh_button = ctk.CTkButton(master=self.frame0, text="↻", width=121, command=self.on_button_click)
+        self.refresh_button.place(relx=1.0, rely=1.0, x=-20, y=-20, anchor="se")
+
+        self.refresh_button.bind("<Enter>", self.on_enter)
+        self.refresh_button.bind("<Leave>", self.on_leave)
+
+        self.after(100, self.auto_check_for_updates)
+
     def on_enter(self, event):
-        if self.r2_c1.cget("text") in ["↻", "Up to Date", "Install"]:
-            self.r2_c1.configure(text="↻")
+        if self.refresh_button.cget("text") in ["↻", "Up to Date", "Download"]:
+            self.refresh_button.configure(text="↻")
         
     def on_leave(self, event):
-        if self.r2_c1.cget("text") == "↻":
+        if self.refresh_button.cget("text") == "↻":
             if self.update_status == "up_to_date":
-                self.r2_c1.configure(text="Up to Date")
+                self.refresh_button.configure(text="Up to Date")
             elif self.update_status == "update_available":
-                self.r2_c1.configure(text="Install")
+                self.refresh_button.configure(text="Download")
             else:
                 pass
     
     def on_button_click(self):
-        """Handle button click - either check for updates or install"""
         if self.update_status == "update_available":
-            self.install_update()
+            # Open browser to the download link
+            if self.download_url:
+                import webbrowser
+                webbrowser.open_new(self.download_url)
+                self.status.configure(text="✅ Opening browser to download page...", text_color="green")
+            else:
+                self.status.configure(text="❌ Error: Could not determine download link.", text_color="red")
         else:
             self.check_for_updates()
     
+    def auto_check_for_updates(self):
+        if not self.auto_checked:
+            self.auto_checked = True
+            self.check_for_updates()
+
     def check_for_updates(self):
         if not self.check_internet_connection():
-            self.status.configure(text="⚠️ No Internet Connection! Please check your internet connection and try again.")
+            self.status.configure(text="⚠️ No Internet Connection! Please check your internet connection and try again.", text_color="red")
             return
+
+        self.status.configure(text="⏳ Checking for updates...\n\nPlease wait...", text_color="blue")
+        self.refresh_button.configure(state="disabled")
+        self.update()
         
         try:
             from main import version
-            current_version_parts = str(version).strip().split(".")
-            current_version = (int(current_version_parts[0]), int(current_version_parts[1]) if len(current_version_parts) > 1 else 0)
-
-            url_parts = self.repo_url.rstrip("/").replace(".git", "").split("/")
+            # 1. Determine Current Version
+            current_version_str = str(version).strip()
+            current_version_parts = [int(p) for p in current_version_str.split('.') if p.isdigit()]
+            current_version = tuple(current_version_parts[:2] + [0] * (2 - len(current_version_parts)))
+            
+            # 2. Extract owner and repo name
+            url_parts = self.r1_c1.get().rstrip("/").replace(".git", "").split("/")
             self.owner = url_parts[-2]
             self.repo_name = url_parts[-1]
 
+            # 3. Check Remote Version in main.py
             raw_url = f"https://raw.githubusercontent.com/{self.owner}/{self.repo_name}/main/application/main.py"
             response = requests.get(raw_url, timeout=10)
             
             if response.status_code == 200:
                 content = response.text
                 
-                version_match = re.search(r"version\s*=\s*['\"]?([\d\.]+)['\"]?", content)
+                version_match = re.search(r"version\s*=\s*([\d\.]+)", content)
                 release_date_match = re.search(r'release_date\s*=\s*["\']([^"\']+)["\']', content)
+
                 if version_match:
-                    repo_version_parts = version_match.group(1).strip().split(".")
-                    self.repo_version = (int(repo_version_parts[0]), int(repo_version_parts[1]) if len(repo_version_parts) > 1 else 0)
-                    if release_date_match:
-                        repo_release_date =  release_date_match.group(1)
+                    repo_version_str = version_match.group(1).strip()
+                    repo_version_parts = [int(p) for p in repo_version_str.split('.') if p.isdigit()]
+                    self.repo_version = tuple(repo_version_parts[:2] + [0] * (2 - len(repo_version_parts)))
+                    
+                    repo_release_date = release_date_match.group(1) if release_date_match else "Unknown Date"
 
                     if self.repo_version > current_version:
                         self.update_status = "update_available"
+                        self.download_url = f"https://github.com/{self.owner}/{self.repo_name}/releases" # <-- Point to Releases page
                         self.new_version_info(self.owner, self.repo_name, self.repo_version, repo_release_date)
                     else:
                         self.update_status = "up_to_date"
                         self.status.configure(text="You are on the latest version.")
-            else:
-                print(f"Failed to reach GitHub. Status: {response.status_code}")
+                else:
+                    self.status.configure(text="❌ Error: Could not find version in repository 'main.py' file.", text_color="red")
 
-        except Exception:
-            pass
+            else:
+                self.status.configure(text=f"❌ Failed to reach GitHub (Status: {response.status_code}). Please verify the Repository URL.", text_color="red")
+
+        except Exception as e:
+            self.status.configure(text=f"❌ An unexpected error occurred: {str(e)}", text_color="red")
+        
+        finally:
+            self.r2_c1.configure(state="normal")
     
     def new_version_info(self, owner, repo_name, repo_version, repo_release_date):
         try:
@@ -374,223 +398,22 @@ class Firmware(ctk.CTkToplevel):
 
             if response.status_code != 200:
                 return
-            
-            commits = response.json()
 
             updates_text = (f"New version v{'.'.join(map(str, repo_version))} "f"is available! ({repo_release_date})\n\n")
 
-            commit_count = 0
-            for commit in commits[:10]:
-                commit_msg = commit.get('commit', {}).get('message', '').strip()
-                commit_date = commit.get('commit', {}).get('author', {}).get('date', '')
-                commit_author = commit.get('commit', {}).get('author', {}).get('name', 'Unknown')
-                
-                if commit_date:
-                    try:
-                        from datetime import datetime
-                        dt = datetime.strptime(commit_date, "%Y-%m-%dT%H:%M:%SZ")
-                        commit_date = dt.strftime("%Y-%m-%d %H:%M")
-                    except:
-                        pass
-                
-                lines = commit_msg.split('\n')
-                first_line = lines[0]
-                
-                updates_text += f"• {first_line}\n"
-                if commit_date:
-                    updates_text += f"  ({commit_date} by {commit_author})\n"
-                
-                if len(lines) > 1:
-                    for line in lines[1:]:
-                        if line.strip():
-                            changes_text += f"  {line.strip()}\n"
-                
-                updates_text += "\n"
-                commit_count += 1
-            
-            if commit_count == 0:
-                updates_text += "No recent changes found.\n"
-            
+            with open("data/version.txt", "r", encoding="utf-8") as f:
+                updates_text += f.read()
+    
             self.status.configure(text=updates_text)
             
         except Exception:
             pass
     
-    def install_update(self):
-        """Download the latest version from GitHub"""
-        try:
-            import os
-            import zipfile
-            import shutil
-            from datetime import datetime
-            
-            self.status.configure(text="⏳ Downloading update...\n\nPlease wait...", text_color="blue")
-            self.r2_c1.configure(state="disabled")
-            self.update()  # Force GUI update
-            
-            # Create download URL for the repository zip
-            zip_url = f"https://github.com/{self.owner}/{self.repo_name}/archive/refs/heads/main.zip"
-            
-            # Download the zip file
-            response = requests.get(zip_url, timeout=30)
-            
-            if response.status_code != 200:
-                self.status.configure(text=f"❌ Failed to download update.\n\nHTTP Status: {response.status_code}", text_color="red")
-                self.r2_c1.configure(state="normal")
-                return
-            
-            # Get directories:
-            # __file__ is in: /path/to/project/application/popups.py
-            # application_dir: /path/to/project/application
-            # parent_dir: /path/to/project
-            application_dir = os.path.dirname(os.path.abspath(__file__))
-            parent_dir = os.path.dirname(application_dir)
-            
-            # Create temporary paths in parent directory
-            temp_zip = os.path.join(parent_dir, "temp_update.zip")
-            temp_extract = os.path.join(parent_dir, "temp_extract")
-            
-            # Save the zip file
-            with open(temp_zip, 'wb') as f:
-                f.write(response.content)
-            
-            self.status.configure(text="⏳ Extracting files...\n\nPlease wait...", text_color="blue")
-            self.update()
-            
-            # Extract the zip file
-            with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-                zip_ref.extractall(temp_extract)
-            
-            # Find the extracted folder (usually repo-name-main)
-            extracted_folder = os.path.join(temp_extract, f"{self.repo_name}-main")
-            
-            if not os.path.exists(extracted_folder):
-                self.status.configure(text="❌ Error: Could not find extracted folder.", text_color="red")
-                self.r2_c1.configure(state="normal")
-                os.remove(temp_zip)
-                shutil.rmtree(temp_extract)
-                return
-            
-            # Define source folders in the extracted repo
-            application_src = os.path.join(extracted_folder, "application")
-            controller_src = os.path.join(extracted_folder, "controller")
-            
-            # Verify application folder exists
-            if not os.path.exists(application_src):
-                self.status.configure(text="❌ Error: 'application' folder not found in downloaded files.", text_color="red")
-                self.r2_c1.configure(state="normal")
-                os.remove(temp_zip)
-                shutil.rmtree(temp_extract)
-                return
-            
-            # Create backup
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_dir = os.path.join(parent_dir, f"backup_{timestamp}")
-            os.makedirs(backup_dir, exist_ok=True)
-            
-            self.status.configure(text=f"⏳ Creating backup...\n\nBackup location: backup_{timestamp}", text_color="blue")
-            self.update()
-            
-            # Backup application folder
-            application_backup = os.path.join(backup_dir, "application")
-            shutil.copytree(application_dir, application_backup, dirs_exist_ok=True)
-            
-            # Backup controller folder if it exists
-            controller_dir = os.path.join(parent_dir, "controller")
-            if os.path.exists(controller_dir):
-                controller_backup = os.path.join(backup_dir, "controller")
-                shutil.copytree(controller_dir, controller_backup, dirs_exist_ok=True)
-            
-            self.status.configure(text="⏳ Installing update...\n\nReplacing application files...", text_color="blue")
-            self.update()
-            
-            # Update application folder - copy all files from extracted application to actual application
-            files_updated = 0
-            for item in os.listdir(application_src):
-                src = os.path.join(application_src, item)
-                dst = os.path.join(application_dir, item)  # Copy to application_dir, not parent_dir
-                
-                try:
-                    if os.path.isfile(src):
-                        shutil.copy2(src, dst)
-                        files_updated += 1
-                    elif os.path.isdir(src):
-                        if os.path.exists(dst):
-                            shutil.rmtree(dst)
-                        shutil.copytree(src, dst)
-                        files_updated += 1
-                except Exception as e:
-                    self.status.configure(
-                        text=f"❌ Error copying {item}:\n{str(e)}",
-                        text_color="red"
-                    )
-                    self.r2_c1.configure(state="normal")
-                    return
-            
-            # Update controller folder if it exists in the download
-            controller_updated = False
-            if os.path.exists(controller_src):
-                self.status.configure(text="⏳ Installing update...\n\nReplacing controller files...", text_color="blue")
-                self.update()
-                
-                try:
-                    # Remove old controller folder
-                    if os.path.exists(controller_dir):
-                        shutil.rmtree(controller_dir)
-                    # Copy new controller folder
-                    shutil.copytree(controller_src, controller_dir)
-                    controller_updated = True
-                except Exception as e:
-                    self.status.configure(
-                        text=f"⚠️ Warning: Controller update failed:\n{str(e)}\n\nApplication updated successfully.",
-                        text_color="orange"
-                    )
-            
-            # Clean up temporary files
-            try:
-                os.remove(temp_zip)
-                shutil.rmtree(temp_extract)
-            except:
-                pass
-            
-            # Success message
-            success_msg = f"✅ Update installed successfully!\n\n"
-            success_msg += f"Version: v{'.'.join(map(str, self.repo_version))}\n"
-            success_msg += f"Backup: backup_{timestamp}\n"
-            success_msg += f"Application files: {files_updated} updated\n"
-            if controller_updated:
-                success_msg += f"Controller folder: Updated ✓\n"
-            success_msg += f"\n⚠️ Please restart the application now."
-            
-            self.status.configure(text=success_msg, text_color="green")
-            
-            self.update_status = "installed"
-            self.r2_c1.configure(text="✓ Installed", state="normal")
-            
-        except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            self.status.configure(
-                text=f"❌ Error during installation:\n\n{str(e)}\n\nDetails:\n{error_details[:300]}",
-                text_color="red"
-            )
-            self.r2_c1.configure(state="normal")
-            
-            # Cleanup on error
-            try:
-                if os.path.exists(temp_zip):
-                    os.remove(temp_zip)
-                if os.path.exists(temp_extract):
-                    shutil.rmtree(temp_extract)
-            except:
-                pass
-            
     def check_internet_connection(self):
         try:
-            requests.head(self.repo_url, timeout=5)
+            requests.head(self.r1_c1.get(), timeout=5) # Use the entry value for connection check
             return True
         except Exception:
-            #CTkMessagebox(title="No Internet Connection", message="Please connect to the internet and try again.", icon="warning")
             return False
 
 class AdvancedControl(ctk.CTkToplevel):
@@ -760,7 +583,6 @@ class VariableSelection(ctk.CTkToplevel):
                     switch.select()
             else:
                 switch.deselect()
-
 
     def update_variable_selection(self, k):
         entry = self.parent.data[k]
