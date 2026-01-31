@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 import customtkinter as ctk
 from customtkinter import filedialog
-#from CTkMessagebox import CTkMessagebox
 from diagnostics import register_log, diagnostics_path
 
 class AdvancedPerformance(ctk.CTkToplevel):
@@ -323,7 +322,7 @@ class Firmware(ctk.CTkToplevel):
             if self.download_url:
                 import webbrowser
                 webbrowser.open_new(self.download_url)
-                self.status.configure(text="✅ Opening browser to download page...", text_color="green")
+                self.status.configure(text="✅ Downloading...", text_color="green")
             else:
                 self.status.configure(text="❌ Error: Could not determine download link.", text_color="red")
         else:
@@ -374,7 +373,7 @@ class Firmware(ctk.CTkToplevel):
 
                     if self.repo_version > current_version:
                         self.update_status = "update_available"
-                        self.download_url = f"https://github.com/{self.owner}/{self.repo_name}/releases" # <-- Point to Releases page
+                        self.download_url = self.downloads()
                         self.new_version_info(self.owner, self.repo_name, self.repo_version, repo_release_date)
                     else:
                         self.update_status = "up_to_date"
@@ -389,7 +388,7 @@ class Firmware(ctk.CTkToplevel):
             self.status.configure(text=f"❌ An unexpected error occurred: {str(e)}", text_color="red")
         
         finally:
-            self.r2_c1.configure(state="normal")
+            self.refresh_button.configure(state="normal")
     
     def new_version_info(self, owner, repo_name, repo_version, repo_release_date):
         try:
@@ -415,6 +414,36 @@ class Firmware(ctk.CTkToplevel):
             return True
         except Exception:
             return False
+    
+    def downloads(self):
+        import platform
+
+        os_name = platform.system()
+
+        os_keywords = {
+            "Windows": ["win", "windows"],
+            "Darwin": ["mac", "darwin", "osx"],
+            "Linux": ["linux", "ubuntu"],
+        }
+
+        if os_name not in os_keywords:
+            raise RuntimeError(f"Unsupported OS: {os_name}")
+        
+        tag = f"v{'.'.join(map(str, self.repo_version))}"
+        api_url = f"https://api.github.com/repos/{self.owner}/{self.repo_name}/releases/tags/{tag}"
+
+        response = requests.get(api_url, timeout=10)
+        response.raise_for_status()
+
+        release = response.json()
+        assets = release.get("assets", [])
+
+        for asset in assets:
+            name = asset.get("name", "").lower()
+            for kw in os_keywords[os_name]:
+                if kw in name:
+                    return asset["browser_download_url"]
+        raise RuntimeError("No compatible installer found for your OS.")
 
 class AdvancedControl(ctk.CTkToplevel):
     def __init__(self, parent):

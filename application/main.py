@@ -4,16 +4,61 @@
 version = 1.0
 release_date = "12/25/2025"
 
-try:
-    import pyi_splash
-    splash_available = True
-except ModuleNotFoundError:
-    splash_available = False
+from tkinter import *
+from tkinter import ttk
+import time
 
-if splash_available:
-    pyi_splash.update_text("Loading modules...")
-    import time
-    time.sleep(0.5)
+# ================= SPLASH SCREEN =================
+class SplashScreen:
+    def __init__(self, root, callback):
+        self.root = root
+        self.callback = callback
+
+        self.splash = Toplevel(root)
+        self.splash.overrideredirect(True)
+
+        screen_width = self.splash.winfo_screenwidth()
+        screen_height = self.splash.winfo_screenheight()
+        splash_width = 600
+        splash_height = 400
+        x = (screen_width - splash_width) // 2
+        y = (screen_height - splash_height) // 2
+        self.splash.geometry(f"{splash_width}x{splash_height}+{x}+{y}")
+
+        self.create_content()
+        self.splash.after(2000, self.close_splash)
+    
+    def create_content(self):
+        bg_frame = Frame(self.splash, bg="#3a7ebf")
+        bg_frame.pack(fill=BOTH, expand=True)
+
+        #logo_label = Label(bg_frame, text = "🔬", font=("Arial", 80), bg="#4361ee", fg="white")
+        #logo_label.pack(pady=(50, 20))
+        Frame(bg_frame, bg="#3a7ebf").pack(expand=True)
+
+        app_name = Label(bg_frame, text="Enhanced Contamination Device Controller", font=("Arial", 24, "bold"), bg="#3a7ebf", fg="white")
+        app_name.pack(pady=10)
+
+        loading_text = Label(bg_frame, text="Loading...", font=("Open Sans", 14), bg="#3a7ebf", fg="white")
+        loading_text.pack(pady=20)
+
+        self.progress = ttk.Progressbar(bg_frame, orient=HORIZONTAL, length=300, mode="determinate")
+        self.progress.pack(pady=10)
+
+        Frame(bg_frame, bg="#3a7ebf").pack(expand=True)
+
+        self.update_progress()
+
+    def update_progress(self):
+        for i in range(101):
+            self.progress['value'] = i
+            self.splash.update()
+            time.sleep(0.02)
+
+    def close_splash(self):
+        self.splash.destroy()
+        self.callback()
+
 
 import os, json, sys
 from pathlib import Path
@@ -23,11 +68,6 @@ from frames import HealthFrame, PerformanceFrame, SettingsFrame, ControlFrame, S
 from sync import Sync
 from data import default_data_map
 from diagnostics import log
-
-if splash_available:
-    pyi_splash.update_text("Starting application...")
-    time.sleep(0.5)
-    pyi_splash.close()
 
 def resource_path(relative_path):
     """Get absolute path to resource (dev + PyInstaller)"""
@@ -41,6 +81,12 @@ def resource_path(relative_path):
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+
+        self.withdraw()
+        SplashScreen(self, self.show_main_app)
+
+    def show_main_app(self):
+        self.deiconify()
 
         log("#001", "Application", "Application has been initialized.")
 
@@ -126,5 +172,4 @@ class App(ctk.CTk):
 
 if __name__ == "__main__":
     app = App()
-
     app.mainloop()
