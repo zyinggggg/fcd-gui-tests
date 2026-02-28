@@ -359,7 +359,7 @@ class Sync:
                         # Sheet 2: Configuration
                         config_sheet = wb.create_sheet(title="Configuration")
                         config_sheet_variables = [
-                            ["pid_rotary_motor_direction", self.parent.control_frame.r1_c1.get()],
+                            ["pid_experiment_mode", self.parent.control_frame.r1_c1.get()],
                             ["pid_rotary_motor_speed_rpm", self.parent.control_frame.r2_c1.get()],
                             ["pid_target_load_lbf", self.parent.control_frame.r4_c1.get()],
                             ["pid_experiment_duration_hh_mm_ss", self.parent.control_frame.r5_c1.get()],
@@ -368,6 +368,7 @@ class Sync:
                             ["pid_z_axis_motor_max_speed_rpm", self.parent.config["pid_z_axis_motor_max_speed_rpm"]],
                             ["pid_z_axis_motor_ramplen_step", self.parent.config["pid_z_axis_motor_ramplen_step"]],
                             ["pid_calibration_stable_required_time_ms", self.parent.config["pid_calibration_stable_required_time_ms"]],
+                            ["pid_calibration_stable_required_count", self.parent.config["pid_calibration_stable_required_count"]],
                             ["pid_calibration_load_error_percent", self.parent.config["pid_calibration_load_error_percent"]],
                             ["pid_tuning_mode_limit_percent", self.parent.config["pid_tuning_mode_limit_percent"]],
                             ["pid_conservative_k_p", self.parent.config["pid_conservative_k_p"]],
@@ -495,7 +496,7 @@ class Sync:
 
     def pid_experiment(self):
         if self.comm:
-            pid_rotary_motor_direction = self.parent.control_frame.r1_c1.get()
+            pid_experiment_mode = self.parent.control_frame.r1_c1.get()
             pid_rotary_motor_speed_rpm = self.parent.control_frame.r2_c1.get()
             if self.parent.control_frame.r3_c1.get() == "Yes":
                 self.pid_target_load_lbf = self.parent.control_frame.r4_c1.get()
@@ -506,7 +507,7 @@ class Sync:
             hh, mm, ss = map(int, pid_experiment_duration_hh_mm_ss.split(':'))
             self.pid_experiment_duration_ms = (hh*3600 + mm*60 + ss) * 1000
 
-            self.comm.pid_experiment(pid_rotary_motor_direction, pid_rotary_motor_speed_rpm, self.pid_target_load_lbf, self.pid_experiment_duration_ms)
+            self.comm.pid_experiment(pid_experiment_mode, pid_rotary_motor_speed_rpm, self.pid_target_load_lbf, self.pid_experiment_duration_ms)
         else:
             pass
 
@@ -514,5 +515,17 @@ class Sync:
         if self.comm:
              self.comm.pid_experiment_terminate()
              self.experiment_data_count = 0
+        else:
+            pass
+    
+    def flash_write(self):
+        if self.comm:
+            self.comm.flash_write()
+        else:
+            pass
+
+    def flash_read(self):
+        if self.comm:
+            self.comm.flash_read()
         else:
             pass

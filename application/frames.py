@@ -210,10 +210,10 @@ class ControlFrame(ctk.CTkFrame):
         self.r0_c1.grid(row=0, column=1, sticky="e", padx=10, pady=(10, 5))
 
         # Row 1
-        self.r1_c0 = ctk.CTkLabel(self, text="Rotary Motor Direction:")
+        self.r1_c0 = ctk.CTkLabel(self, text="Experiment Mode:")
         self.r1_c0.grid(row=1, column=0, sticky="w", padx=10, pady=2)
 
-        self.r1_c1 = ctk.CTkOptionMenu(self, values=["CW", "CCW"], text_color="#FFFFFF", width=121)
+        self.r1_c1 = ctk.CTkOptionMenu(self, values=["CW", "CCW", "CW+CCW", "CCW+CW", "Swing"], text_color="#FFFFFF", width=121)
         self.r1_c1.grid(row=1, column=1, sticky="e", padx=10, pady=2)
 
         # Row 2

@@ -1,9 +1,6 @@
 import json
 import requests
-import re, os, sys
-import tempfile, zipfile
-import io
-import subprocess
+import re
 from pathlib import Path
 import customtkinter as ctk
 from customtkinter import filedialog
@@ -97,6 +94,16 @@ class AdvancedSettings(ctk.CTkToplevel):
             setattr(self, f"{key}_value", value)
             self.frame0_row += 1
 
+            if key == "pid_z_axis_motor_ramplen_step":
+                label = ctk.CTkLabel(master=self.frame0, text="PID Calibration Mode:")
+                label.grid(row=self.frame0_row, column=0, sticky="w", padx=10, pady=2)
+
+                option = ctk.CTkSegmentedButton(self.frame0, values=["Time", "Count"], command=self.set_pid_calibration_mode)
+                option.grid(row=self.frame0_row, column=3, sticky="e", padx=10, pady=2)
+                option.set("Count")
+
+                self.frame0_row += 1
+
         self.load_button = ctk.CTkButton(master=self.frame0, text="Load", command=self.load, width=121)
         self.load_button.grid(row=self.frame0_row, column=1, sticky="e", padx=0, pady=2)
 
@@ -106,6 +113,14 @@ class AdvancedSettings(ctk.CTkToplevel):
         self.configure_button = ctk.CTkButton(master=self.frame0, text="Configure", command=self.configure, width=121)
         self.configure_button.grid(row=self.frame0_row, column=3, sticky="e", padx=10, pady=2)
     
+    def set_pid_calibration_mode(self, value):
+        if value == "Time":
+            self.pid_calibration_stable_required_count_value.configure(state="disabled")
+            self.pid_calibration_stable_required_time_ms_value.configure(state="normal")
+        else:
+            self.pid_calibration_stable_required_time_ms_value.configure(state="disabled")
+            self.pid_calibration_stable_required_count_value.configure(state="normal")
+
     def configure(self):
         config = self.parent.config
         for key in list(config.keys()):
@@ -298,23 +313,7 @@ class Firmware(ctk.CTkToplevel):
         self.refresh_button = ctk.CTkButton(master=self.frame0, text="↻", width=121, command=self.on_button_click)
         self.refresh_button.place(relx=1.0, rely=1.0, x=-20, y=-20, anchor="se")
 
-        self.refresh_button.bind("<Enter>", self.on_enter)
-        self.refresh_button.bind("<Leave>", self.on_leave)
-
         self.after(100, self.auto_check_for_updates)
-
-    def on_enter(self, event):
-        if self.refresh_button.cget("text") in ["↻", "Up to Date", "Download"]:
-            self.refresh_button.configure(text="↻")
-        
-    def on_leave(self, event):
-        if self.refresh_button.cget("text") == "↻":
-            if self.update_status == "up_to_date":
-                self.refresh_button.configure(text="Up to Date")
-            elif self.update_status == "update_available":
-                self.refresh_button.configure(text="Download")
-            else:
-                pass
     
     def on_button_click(self):
         if self.update_status == "update_available":
@@ -338,8 +337,8 @@ class Firmware(ctk.CTkToplevel):
             self.status.configure(text="⚠️ No Internet Connection! Please check your internet connection and try again.", text_color="red")
             return
 
-        self.status.configure(text="⏳ Checking for updates...\n\nPlease wait...", text_color="blue")
         self.refresh_button.configure(state="disabled")
+        self.status.configure(text="⏳ Checking for updates...\n\nPlease wait...", text_color="blue")
         self.update()
         
         try:
@@ -373,10 +372,12 @@ class Firmware(ctk.CTkToplevel):
 
                     if self.repo_version > current_version:
                         self.update_status = "update_available"
+                        self.refresh_button.configure(text="Install")
+                        self.new_version_info(self.repo_version, repo_release_date)
                         self.download_url = self.downloads()
-                        self.new_version_info(self.owner, self.repo_name, self.repo_version, repo_release_date)
                     else:
                         self.update_status = "up_to_date"
+                        self.refresh_button.configure(text="Up to Date")
                         self.status.configure(text="You are on the latest version.")
                 else:
                     self.status.configure(text="❌ Error: Could not find version in repository 'main.py' file.", text_color="red")
@@ -390,23 +391,17 @@ class Firmware(ctk.CTkToplevel):
         finally:
             self.refresh_button.configure(state="normal")
     
-    def new_version_info(self, owner, repo_name, repo_version, repo_release_date):
-        try:
-            api_url = f"https://api.github.com/repos/{owner}/{repo_name}/commits?sha=main"
-            response = requests.get(api_url, timeout=10)
+    def new_version_info(self, repo_version, repo_release_date):
+        from main import resource_path
 
-            if response.status_code != 200:
-                return
+        updates_text = (f"New version v{'.'.join(map(str, repo_version))} "f"is available! ({repo_release_date})\n\n")
 
-            updates_text = (f"New version v{'.'.join(map(str, repo_version))} "f"is available! ({repo_release_date})\n\n")
+        version_file = resource_path("data/version.txt") 
+        with open(version_file, "r", encoding="utf-8") as f:
+            updates_text += f.read()
 
-            with open("data/version.txt", "r", encoding="utf-8") as f:
-                updates_text += f.read()
-    
-            self.status.configure(text=updates_text)
-            
-        except Exception:
-            pass
+        self.status.configure(text=updates_text)
+
     
     def check_internet_connection(self):
         try:
