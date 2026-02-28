@@ -4,9 +4,7 @@
 version = 1.0
 release_date = "12/25/2025"
 
-from tkinter import *
-from tkinter import ttk
-import time
+import customtkinter as ctk
 
 # ================= SPLASH SCREEN =================
 class SplashScreen:
@@ -14,7 +12,7 @@ class SplashScreen:
         self.root = root
         self.callback = callback
 
-        self.splash = Toplevel(root)
+        self.splash = ctk.CTkToplevel(root)
         self.splash.overrideredirect(True)
 
         screen_width = self.splash.winfo_screenwidth()
@@ -29,31 +27,27 @@ class SplashScreen:
         self.splash.after(2000, self.close_splash)
     
     def create_content(self):
-        bg_frame = Frame(self.splash, bg="#3a7ebf")
-        bg_frame.pack(fill=BOTH, expand=True)
+        bg_frame = ctk.CTkFrame(self.splash, fg_color="#3a7ebf")
+        bg_frame.pack(fill="both", expand=True)
 
-        #logo_label = Label(bg_frame, text = "🔬", font=("Arial", 80), bg="#4361ee", fg="white")
-        #logo_label.pack(pady=(50, 20))
-        Frame(bg_frame, bg="#3a7ebf").pack(expand=True)
+        center_frame = ctk.CTkFrame(bg_frame, fg_color="transparent")
+        center_frame.pack(expand=True)
 
-        app_name = Label(bg_frame, text="Enhanced Contamination Device Controller", font=("Arial", 24, "bold"), bg="#3a7ebf", fg="white")
+        app_name = ctk.CTkLabel(center_frame, text="Enhanced Contamination Device Controller", font=("Arial", 24, "bold"), text_color="white")
         app_name.pack(pady=10)
 
-        loading_text = Label(bg_frame, text="Loading...", font=("Open Sans", 14), bg="#3a7ebf", fg="white")
+        loading_text = ctk.CTkLabel(center_frame, text="Loading...", font=("Open Sans", 14), text_color="white")
         loading_text.pack(pady=20)
 
-        self.progress = ttk.Progressbar(bg_frame, orient=HORIZONTAL, length=300, mode="determinate")
+        self.progress = ctk.CTkProgressBar(center_frame, orientation="horizontal", width=300)
         self.progress.pack(pady=10)
-
-        Frame(bg_frame, bg="#3a7ebf").pack(expand=True)
 
         self.update_progress()
 
-    def update_progress(self):
-        for i in range(101):
-            self.progress['value'] = i
-            self.splash.update()
-            time.sleep(0.02)
+    def update_progress(self, value=0):
+        if value <= 100:
+            self.progress.set(value / 100)
+            self.splash.after(20, self.update_progress, value + 1)
 
     def close_splash(self):
         self.splash.destroy()
@@ -63,7 +57,6 @@ class SplashScreen:
 import os, json, sys
 from pathlib import Path
 os.environ['MPLCONFIGDIR'] = str(Path.home())+"/.matplotlib/"
-import customtkinter as ctk
 from frames import HealthFrame, PerformanceFrame, SettingsFrame, ControlFrame, SurfaceFrame, PIDFrame
 from sync import Sync
 from data import default_data_map
@@ -158,6 +151,7 @@ class App(ctk.CTk):
         self.firmware = None
         self.advanced_control = None
         self.PID_results = None
+        self.flash_test = None
         
         self.protocol("WM_DELETE_WINDOW", self.exit)
 
