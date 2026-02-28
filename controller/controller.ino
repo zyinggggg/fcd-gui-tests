@@ -1,12 +1,30 @@
 // Author: Mehmet B. Sefer (Technical Project Specialist II)
 // Organization: NexGenPPT @ Iowa State University
 
+// version = 1.1
+// release_date = "12/25/2025"
+  
 #include <MobaTools.h>
 #include <Adafruit_ADS1X15.h>
 #include <ArduinoJson.h>
 #include <PID_v1.h>
 #include "hardware/watchdog.h"
 #include <limits>
+#include <Smoothed.h> 
+
+#include <Adafruit_SPIFlash.h>
+#include <SPI.h>
+#include "sdFat_Adafruit_Fork.h"
+#include "flash_config.h"
+
+Adafruit_SPIFlash flash(&flashTransport);
+FatVolume fatfs;
+
+#define FILE_PATH "/test.txt"
+
+Smoothed <int16_t> right_loadcell_adc_16bit_smoothed; 
+Smoothed <int16_t> left_loadcell_adc_16bit_smoothed;
+
 
 JsonDocument doc;
 
@@ -35,6 +53,9 @@ float         rotary_motor_speed_step_s                                 = 0.00f;
 float         rotary_motor_speed_rpm                                    = 0.00f;
 long          rotary_motor_position_deg                                 = 0;
 long          rotary_motor_initial_position_deg                         = 0;
+long          rotary_motor_current_position_deg                         = 0;
+long          rotary_motor_last_position_step                           = 0;
+long          rotary_motor_current_position_step                        = 0;
 
 const byte    right_z_axis_motor_pin_step                               = 8;
 const byte    right_z_axis_motor_pin_dir                                = 15;
@@ -78,11 +99,12 @@ float         pid_load_error_percent                                    = 0.00f;
 float         pid_total_load_error_percent                              = 0.00f;
 float         pid_load_error_running_avg_percent                        = 0.00f;
 
-uint8_t       pid_rotary_motor_direction                                = 0;
+uint8_t       pid_experiment_mode                                       = 0;
 float         pid_rotary_motor_speed_rpm                                = 0.00f;
 double        pid_z_axis_motor_speed_rpm                                = 0.00;
 
 long          pid_calibration_stable_start_time_ms                      = 0;
+uint8_t       pid_calibration_stable_count                              = 0;
 long          pid_calibration_start_time_ms                             = 0;
 double        pid_overshoot_lbf                                         = 0.00;
 float         pid_overshoot_percent                                     = 0.00f;
@@ -91,15 +113,19 @@ float         pid_settling_time_s                                       = 0.00f;
 double        pid_experiment_target_load_lbf                            = 0.00;
 long          pid_experiment_start_time_ms                              = 0;
 long          pid_experiment_duration_ms                                = 0;
+long          pid_experiment_duration_half_time_ms                      = 0;
 
 uint8_t       pid_tuning_mode                                           = 0;
+int8_t        pid_swing_direction                                       = 1;
 
 Adafruit_ADS1115 ads;
 int16_t       right_loadcell_adc_16bit                                  = 0;
+int16_t       right_loadcell_adc_16bit_smoothed_avg                     = 0;
 float         right_loadcell_volts_v                                    = 0.00f;
 float         right_loadcell_load_lbf                                   = 0.00f;
 
 int16_t       left_loadcell_adc_16bit                                   = 0;
+int16_t       left_loadcell_adc_16bit_smoothed_avg                      = 0;
 float         left_loadcell_volts_v                                     = 0.00f;
 float         left_loadcell_load_lbf                                    = 0.00f;
 
@@ -119,6 +145,7 @@ struct Config {
   uint16_t    pid_z_axis_motor_ramplen_step                             = 0;
 
   long        pid_calibration_stable_required_time_ms                   = 0;
+  uint8_t     pid_calibration_stable_required_count                     = 0;
   float       pid_calibration_load_error_percent                        = 0.00f;
 
   float       pid_tuning_mode_limit_percent                             = 0.00f;
@@ -132,11 +159,13 @@ struct Config {
   long        go_home_z_axis_motors_bounce_step                         = 0;
 
   float       right_loadcell_zero_offset_lbf                            = 0.00f;
-  float       right_loadcell_scale_factor                               = 3.0303f;
-  float       right_loadcell_max_load_lbf                               = 5.00f;
+  float       right_loadcell_calibration_offset_lbf                     = 0.08f;
+  float       right_loadcell_scale_factor                               = 6.0606f;
+  float       right_loadcell_max_load_lbf                               = 10.00f;
   float       left_loadcell_zero_offset_lbf                             = 0.00f;
-  float       left_loadcell_scale_factor                                = 3.0303f;
-  float       left_loadcell_max_load_lbf                                = 5.00f;
+  float       left_loadcell_calibration_offset_lbf                      = 0.08f;
+  float       left_loadcell_scale_factor                                = 6.0606f;
+  float       left_loadcell_max_load_lbf                                = 10.00f;
 
 
 };
@@ -155,6 +184,99 @@ void seq_start(Action actions[], uint8_t count) {
   seq_index    = 0;
   seq_active   = true;
   seq_actions[0]();
+}
+
+bool init_flash() {
+  if (!flash.begin()) {
+    Serial.println("Error, failed to initialize flash chip!");
+    while (1) {
+      delay(1);
+    }
+  }
+  
+  Serial.print(F("Flash chip JEDEC ID: 0x"));
+  Serial.println(flash.getJEDECID(), HEX);
+  Serial.print(F("Flash size: "));
+  Serial.print(flash.size() / 1024);
+  Serial.println(F(" KB"));
+  
+  if (!fatfs.begin(&flash)) {
+    Serial.println(F("Filesystem not found - format flash first"));
+    return false;
+  }
+  
+  Serial.println(F("Flash ready!"));
+  return true;
+}
+
+void spi_write(String message){
+  // Step 1: Initialize flash
+  if (!flash.begin()) {
+    Serial.println("FLASH_ERROR:Init_Failed");
+    return;
+  }
+  
+  if (!fatfs.begin(&flash)) {
+    Serial.println("FLASH_ERROR:Mount_Failed");
+    return;
+  }
+
+  // Step 2: Write the GUI message to flash
+  // Use O_WRITE | O_CREAT | O_TRUNC to overwrite file (not append)
+  File32 writeFile = fatfs.open(FILE_PATH, O_WRITE | O_CREAT | O_TRUNC);
+  if (!writeFile) {
+    Serial.println("FLASH_ERROR:Write_Open_Failed");
+    return;
+  }
+
+  writeFile.println(message);  // Write the message from GUI
+  writeFile.close();
+}
+
+void spi_read(){
+  // Step 1: Initialize flash
+  if (!flash.begin()) {
+    Serial.println("FLASH_ERROR:Init_Failed");
+    return;
+  }
+  
+  if (!fatfs.begin(&flash)) {
+    Serial.println("FLASH_ERROR:Mount_Failed");
+    return;
+  }
+
+  // Step 2: Read back from flash
+  File32 readFile = fatfs.open(FILE_PATH, FILE_READ);
+  if (!readFile) {
+    Serial.println("FLASH_ERROR:Read_Open_Failed");
+    return;
+  }
+
+  // Read the entire content
+  String flashContent = "";
+  while (readFile.available()) {
+    flashContent += (char)readFile.read();
+  }
+  readFile.close();
+  
+  Serial.print(flashContent);
+  Serial.println("'");
+  Serial.println(flashContent.length());
+  
+  // Trim trailing newlines to avoid double-newline issue
+  flashContent.trim();
+  Serial.print(flashContent);
+  Serial.println("'");
+
+  // Small delay before sending
+  delay(100);
+
+  // Step 4: Send the content back to GUI
+  Serial.println("FLASH_START");
+  Serial.print("FLASH_DATA:");
+  Serial.println(flashContent);
+  Serial.println("FLASH_END");
+  Serial.flush();
 }
 
 void tmc_enable() {
@@ -224,6 +346,7 @@ void pid_control_settings() {
 
 void pid_experiment_1() {
   pid_calibration_stable_start_time_ms = 0;
+  pid_calibration_stable_count = 0;
   pid_overshoot_lbf = 0;
   pid_overshoot_percent = 0;
   pid_load_error_running_avg_percent = 0;
@@ -255,26 +378,43 @@ void pid_experiment_2() {
   pid_load_error_percent = fabs((total_load_lbf - pid_experiment_target_load_lbf) * 100 / pid_experiment_target_load_lbf);
 
   if (pid_load_error_percent <= cfg.pid_calibration_load_error_percent) {
-    if (pid_calibration_stable_start_time_ms == 0) {
-      pid_calibration_stable_start_time_ms = millis();
-    } 
-    else {
-      if ((millis() - pid_calibration_stable_start_time_ms) >= cfg.pid_calibration_stable_required_time_ms) {
-        right_z_axis_motor.rotate(0);
-        left_z_axis_motor.rotate(0);
-        pid_settling_time_s = (millis() - pid_calibration_start_time_ms) / 1000.0f;
-        pid_calibration_stable_start_time_ms = 0;
-        comm_status = true;
-        Serial.write((uint8_t*)"\xCC\x20\x05\xEE", 4);
-        comm_status = false;
-        seq_index++;
-        return;
-      }
-    } 
+    pid_calibration_stable_count++;
+    if (pid_calibration_stable_count >= cfg.pid_calibration_stable_required_count) {
+      pid_calibration_stable_count = 0;
+      right_z_axis_motor.rotate(0);
+      left_z_axis_motor.rotate(0);
+      pid_settling_time_s = (millis() - pid_calibration_start_time_ms) / 1000.0f;
+      comm_status = true;
+      Serial.write((uint8_t*)"\xCC\x20\x05\xEE", 4);
+      comm_status = false;
+      seq_index++;
+      return;
+    }
   }
   else {
-    pid_calibration_stable_start_time_ms = 0;
+    pid_calibration_stable_count = 0;
   }
+  // if (pid_load_error_percent <= cfg.pid_calibration_load_error_percent) {
+  //   if (pid_calibration_stable_start_time_ms == 0) {
+  //     pid_calibration_stable_start_time_ms = millis();
+  //   } 
+  //   else {
+  //     if ((millis() - pid_calibration_stable_start_time_ms) >= cfg.pid_calibration_stable_required_time_ms) {
+  //       right_z_axis_motor.rotate(0);
+  //       left_z_axis_motor.rotate(0);
+  //       pid_settling_time_s = (millis() - pid_calibration_start_time_ms) / 1000.0f;
+  //       pid_calibration_stable_start_time_ms = 0;
+  //       comm_status = true;
+  //       Serial.write((uint8_t*)"\xCC\x20\x05\xEE", 4);
+  //       comm_status = false;
+  //       seq_index++;
+  //       return;
+  //     }
+  //   } 
+  // }
+  // else {
+  //   pid_calibration_stable_start_time_ms = 0;
+  // }
 
   if (pid_load_error_percent < cfg.pid_tuning_mode_limit_percent) {
     pid_control.SetTunings(cfg.pid_conservative_k_p, cfg.pid_conservative_k_i, cfg.pid_conservative_k_d);
@@ -304,12 +444,19 @@ void pid_experiment_2() {
 
 void pid_experiment_3() {
   pid_experiment_start_time_ms = millis();
+  pid_experiment_duration_half_time_ms = pid_experiment_duration_ms / 2;
   comm_status = true;
   Serial.write((uint8_t*)"\xCC\x20\x06\xEE", 4);
   comm_status = false;
-  rotary_motor_initial_position_deg = rotary_motor.read();
-  if (pid_rotary_motor_direction == 0x01) {
+  // rotary_motor_initial_position_deg = rotary_motor.read();
+  rotary_motor_last_position_step = rotary_motor.readSteps();
+  total_revolution_rev = 0;
+  if (pid_experiment_mode == 0x01 || pid_experiment_mode == 0x03) {
     rotary_motor.rotate(-1);
+  }
+  else if (pid_experiment_mode == 0x04){
+    pid_swing_direction = 1;
+    rotary_motor.doSteps(rotary_motor_full_step_rev);
   }
   else {
     rotary_motor.rotate(1);
@@ -321,6 +468,63 @@ void pid_experiment_3() {
 }
 
 void pid_experiment_4() {
+
+  if (millis() - pid_experiment_start_time_ms >= pid_experiment_duration_half_time_ms) {
+    seq_index++;
+    return;
+  }
+
+  if (pid_experiment_target_load_lbf == 0) {
+    return;
+  }
+
+  ads_loop();
+
+  pid_load_error_percent = fabs((total_load_lbf - pid_experiment_target_load_lbf) * 100 / pid_experiment_target_load_lbf);
+  pid_total_load_error_percent += pid_load_error_percent;
+  pid_load_error_running_avg_percent = pid_total_load_error_percent / pid_loop_n++;
+  
+  if (pid_load_error_percent < cfg.pid_tuning_mode_limit_percent) {
+    pid_control.SetTunings(cfg.pid_conservative_k_p, cfg.pid_conservative_k_i, cfg.pid_conservative_k_d);
+  }
+  else {
+    pid_control.SetTunings(cfg.pid_aggressive_k_p, cfg.pid_aggressive_k_i, cfg.pid_aggressive_k_d);
+  }
+
+  pid_control.Compute();
+
+  right_z_axis_motor.setSpeed( fabs(pid_z_axis_motor_speed_rpm * 10) );
+  left_z_axis_motor.setSpeed( fabs(pid_z_axis_motor_speed_rpm * 10) );
+
+  if (pid_z_axis_motor_speed_rpm > 0) {
+    right_z_axis_motor.rotate(-1);
+    left_z_axis_motor.rotate(-1);
+  }
+  else if (pid_z_axis_motor_speed_rpm < 0) {
+    right_z_axis_motor.rotate(1);
+    left_z_axis_motor.rotate(1);
+  }
+  else {
+    right_z_axis_motor.rotate(0);
+    left_z_axis_motor.rotate(0);
+  }
+
+  rotary_motor_current_position_step = rotary_motor.readSteps();
+  total_revolution_rev += fabs((float)(rotary_motor_current_position_step - rotary_motor_last_position_step) / (float)rotary_motor_full_step_rev);
+  rotary_motor_last_position_step = rotary_motor_current_position_step;
+}
+
+void pid_experiment_5() {
+  if (pid_experiment_mode == 0x03) {
+    rotary_motor.rotate(1);
+  }
+  else if (pid_experiment_mode == 0x02) {
+    rotary_motor.rotate(-1);
+  }
+  seq_index++;
+}
+
+void pid_experiment_6() {
 
   if (millis() - pid_experiment_start_time_ms >= pid_experiment_duration_ms) {
     seq_index++;
@@ -361,9 +565,78 @@ void pid_experiment_4() {
     right_z_axis_motor.rotate(0);
     left_z_axis_motor.rotate(0);
   }
+
+  rotary_motor_current_position_step = rotary_motor.readSteps();
+  total_revolution_rev += fabs((float)(rotary_motor_current_position_step - rotary_motor_last_position_step) / (float)rotary_motor_full_step_rev);
+  rotary_motor_last_position_step = rotary_motor_current_position_step;
 }
 
-void pid_experiment_5() {
+void pid_swing_1(){
+
+  if (millis() - pid_experiment_start_time_ms >= pid_experiment_duration_ms) {
+    seq_index++;
+    return;
+  }
+
+  if (pid_experiment_target_load_lbf == 0) {
+    return;
+  }
+
+  ads_loop();
+
+  pid_load_error_percent = fabs((total_load_lbf - pid_experiment_target_load_lbf) * 100 / pid_experiment_target_load_lbf);
+  pid_total_load_error_percent += pid_load_error_percent;
+  pid_load_error_running_avg_percent = pid_total_load_error_percent / pid_loop_n++;
+  
+  if (pid_load_error_percent < cfg.pid_tuning_mode_limit_percent) {
+    pid_control.SetTunings(cfg.pid_conservative_k_p, cfg.pid_conservative_k_i, cfg.pid_conservative_k_d);
+  }
+  else {
+    pid_control.SetTunings(cfg.pid_aggressive_k_p, cfg.pid_aggressive_k_i, cfg.pid_aggressive_k_d);
+  }
+
+  pid_control.Compute();
+
+  right_z_axis_motor.setSpeed( fabs(pid_z_axis_motor_speed_rpm * 10) );
+  left_z_axis_motor.setSpeed( fabs(pid_z_axis_motor_speed_rpm * 10) );
+
+  if (pid_z_axis_motor_speed_rpm > 0) {
+    right_z_axis_motor.rotate(-1);
+    left_z_axis_motor.rotate(-1);
+  }
+  else if (pid_z_axis_motor_speed_rpm < 0) {
+    right_z_axis_motor.rotate(1);
+    left_z_axis_motor.rotate(1);
+  }
+  else {
+    right_z_axis_motor.rotate(0);
+    left_z_axis_motor.rotate(0);
+  }
+
+  rotary_motor_current_position_step = rotary_motor.readSteps();
+  total_revolution_rev += fabs((float)(rotary_motor_current_position_step - rotary_motor_last_position_step) / (float)rotary_motor_full_step_rev);
+  rotary_motor_last_position_step = rotary_motor_current_position_step;
+
+  if (!rotary_motor.moving()){
+    seq_index++;
+  }
+
+}
+
+void pid_swing_2() {
+  
+  if (millis() - pid_experiment_start_time_ms >= pid_experiment_duration_ms) {
+    seq_index++;
+    return;
+  }
+
+  pid_swing_direction = -pid_swing_direction;
+  rotary_motor.doSteps(pid_swing_direction * rotary_motor_full_step_rev);
+  seq_index--;
+}
+
+
+void pid_experiment_7() {
   halt_motors();
   comm_status = true;
   Serial.write((uint8_t*)"\xCC\x20\x07\xEE", 4);
@@ -371,7 +644,9 @@ void pid_experiment_5() {
   seq_start(go_home_all_motors, sizeof(go_home_all_motors)/sizeof(go_home_all_motors[0]));
 }
 
-static Action pid_experiment[] = { go_home_z_axis_motors_1, go_home_z_axis_motors_2, go_home_z_axis_motors_3, go_home_rotary_motor, pid_experiment_1, pid_experiment_2, pid_experiment_3, pid_experiment_4, pid_experiment_5 };
+static Action pid_experiment_single[] = { go_home_z_axis_motors_1, go_home_z_axis_motors_2, go_home_z_axis_motors_3, go_home_rotary_motor, pid_experiment_1, pid_experiment_2, pid_experiment_3, pid_experiment_6, pid_experiment_7 };
+static Action pid_experiment_double[] = { go_home_z_axis_motors_1, go_home_z_axis_motors_2, go_home_z_axis_motors_3, go_home_rotary_motor, pid_experiment_1, pid_experiment_2, pid_experiment_3, pid_experiment_4, pid_experiment_5, pid_experiment_6, pid_experiment_7 };
+static Action pid_experiment_swing[] = { go_home_z_axis_motors_1, go_home_z_axis_motors_2, go_home_z_axis_motors_3, go_home_rotary_motor, pid_experiment_1, pid_experiment_2, pid_experiment_3, pid_swing_1, pid_swing_2, pid_experiment_7};
 
 void halt_motors() {
   pid_control.SetMode(MANUAL);
@@ -387,14 +662,20 @@ void halt_motors() {
 }
 
 void ads_loop() {
-  right_loadcell_adc_16bit = ads.readADC_SingleEnded(1);
-  left_loadcell_adc_16bit = ads.readADC_SingleEnded(1);
+  right_loadcell_adc_16bit = ads.readADC_SingleEnded(0);
+  left_loadcell_adc_16bit = ads.readADC_SingleEnded(0);
 
-  right_loadcell_volts_v = ads.computeVolts(right_loadcell_adc_16bit);
-  left_loadcell_volts_v = ads.computeVolts(left_loadcell_adc_16bit);
+  right_loadcell_adc_16bit_smoothed.add(right_loadcell_adc_16bit);
+  left_loadcell_adc_16bit_smoothed.add(left_loadcell_adc_16bit);
 
-  right_loadcell_load_lbf = right_loadcell_volts_v * cfg.right_loadcell_scale_factor - cfg.right_loadcell_zero_offset_lbf;
-  left_loadcell_load_lbf = left_loadcell_volts_v * cfg.left_loadcell_scale_factor - cfg.left_loadcell_zero_offset_lbf;
+  right_loadcell_adc_16bit_smoothed_avg = right_loadcell_adc_16bit_smoothed.get();
+  left_loadcell_adc_16bit_smoothed_avg = left_loadcell_adc_16bit_smoothed.get();
+
+  right_loadcell_volts_v = ads.computeVolts(right_loadcell_adc_16bit_smoothed_avg);
+  left_loadcell_volts_v = ads.computeVolts(left_loadcell_adc_16bit_smoothed_avg);
+
+  right_loadcell_load_lbf = ((right_loadcell_volts_v - cfg.right_loadcell_zero_offset_lbf) * cfg.right_loadcell_scale_factor * 2.20462f) - cfg.right_loadcell_calibration_offset_lbf;
+  left_loadcell_load_lbf = ((left_loadcell_volts_v - cfg.left_loadcell_zero_offset_lbf) * cfg.left_loadcell_scale_factor * 2.20462f) - cfg.left_loadcell_calibration_offset_lbf;
   total_load_lbf = right_loadcell_load_lbf + left_loadcell_load_lbf;
 
   if ((right_loadcell_load_lbf + cfg.right_loadcell_zero_offset_lbf) >= cfg.right_loadcell_max_load_lbf 
@@ -408,10 +689,27 @@ void ads_loop() {
 
 void setup() {
   Serial.begin(115200);
+  
+  while (!Serial) delay(10);
+  
+  Serial.println(F("\n=== Flash Test Starting ==="));
+  
+  // Initialize flash
+  init_flash();
+  
+  Serial.println(F("Setup complete"));
   tmc_enable();
+
+  right_loadcell_adc_16bit_smoothed.begin(SMOOTHED_AVERAGE, 10);
+  left_loadcell_adc_16bit_smoothed.begin(SMOOTHED_AVERAGE, 10);
+
   ads.begin();
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
+
+  right_loadcell_adc_16bit_smoothed.clear();
+  left_loadcell_adc_16bit_smoothed.clear();
+
   delay(1000);
 }
 
@@ -451,6 +749,7 @@ void comm() {
         cfg.pid_z_axis_motor_ramplen_step = obj["pid_z_axis_motor_ramplen_step"].as<float>();
 
         cfg.pid_calibration_stable_required_time_ms = obj["pid_calibration_stable_required_time_ms"].as<float>();
+        cfg.pid_calibration_stable_required_count = obj["pid_calibration_stable_required_count"].as<float>();
         cfg.pid_calibration_load_error_percent = obj["pid_calibration_load_error_percent"].as<float>();
         
         cfg.pid_tuning_mode_limit_percent = obj["pid_tuning_mode_limit_percent"].as<float>();
@@ -464,9 +763,11 @@ void comm() {
         cfg.go_home_z_axis_motors_bounce_step = obj["go_home_z_axis_motors_bounce_step"].as<float>();
 
         cfg.right_loadcell_zero_offset_lbf = obj["right_loadcell_zero_offset_lbf"].as<float>();
+        cfg.right_loadcell_calibration_offset_lbf = obj["right_loadcell_calibration_offset_lbf"].as<float>();
         cfg.right_loadcell_scale_factor = obj["right_loadcell_scale_factor"].as<float>();
         cfg.right_loadcell_max_load_lbf = obj["right_loadcell_max_load_lbf"].as<float>();
         cfg.left_loadcell_zero_offset_lbf = obj["left_loadcell_zero_offset_lbf"].as<float>();
+        cfg.left_loadcell_calibration_offset_lbf = obj["left_loadcell_calibration_offset_lbf"].as<float>();
         cfg.left_loadcell_scale_factor = obj["left_loadcell_scale_factor"].as<float>();
         cfg.left_loadcell_max_load_lbf = obj["left_loadcell_max_load_lbf"].as<float>();
         
@@ -650,7 +951,7 @@ void comm() {
       case 0x20: //pid_experiment
         if (!motors_moving()) {
           
-          pid_rotary_motor_direction = Serial.read();
+          pid_experiment_mode = Serial.read();
 
           if (Serial.readBytes((uint8_t*)&pid_rotary_motor_speed_rpm, sizeof(pid_rotary_motor_speed_rpm)) != sizeof(pid_rotary_motor_speed_rpm)) {
             Serial.write((uint8_t*)"\xCC\x20\x01\xEE", 4);
@@ -669,8 +970,15 @@ void comm() {
             comm_status = false;
             return;
           }
-          seq_start(pid_experiment, sizeof(pid_experiment)/sizeof(pid_experiment[0]));
-          Serial.write((uint8_t*)"\xCC\x20\x00\xEE", 4);
+          if (pid_experiment_mode == 0x00 || pid_experiment_mode == 0x01) {
+            seq_start(pid_experiment_single, sizeof(pid_experiment_single) / sizeof(pid_experiment_single[0]));
+          }
+          else if (pid_experiment_mode == 0x02 || pid_experiment_mode == 0x03) {
+            seq_start(pid_experiment_double, sizeof(pid_experiment_double) / sizeof(pid_experiment_double[0]));
+          }
+          else if (pid_experiment_mode == 0x04) {
+            seq_start(pid_experiment_swing, sizeof(pid_experiment_swing) / sizeof(pid_experiment_swing[0]));
+          } 
         }
         comm_status = false;
         break;
@@ -679,6 +987,27 @@ void comm() {
         halt_motors();
         seq_start(go_home_all_motors, sizeof(go_home_all_motors)/sizeof(go_home_all_motors[0]));
         Serial.write((uint8_t*)"\xCC\x21\x00\xEE", 4);
+        comm_status = false;
+        break;
+      case 0x30: {// SPI Flash Test 
+        // Read the message length
+        while (Serial.available() < 1) { delay(1); }
+        uint8_t msg_length = Serial.read();
+        
+        // Read the message itself
+        String message_from_gui = "";
+        for (int i = 0; i < msg_length; i++) {
+          while (Serial.available() < 1) { delay(1); }
+          message_from_gui += (char)Serial.read();
+        }
+        
+        // Write to flash and read back
+        spi_write(message_from_gui);
+        comm_status = false;
+        break;
+      }
+      case 0x31:
+        spi_read();
         comm_status = false;
         break;
       default:
@@ -745,7 +1074,7 @@ void send_data() {
   data += String(passive_roller_position_in);
   data += ",";
 
-  data += String(right_loadcell_adc_16bit);
+  data += String(right_loadcell_adc_16bit_smoothed_avg);
   data += ",";
 
   data += String(right_loadcell_volts_v);
@@ -754,7 +1083,7 @@ void send_data() {
   data += String(right_loadcell_load_lbf);
   data += ",";
 
-  data += String(left_loadcell_adc_16bit);
+  data += String(left_loadcell_adc_16bit_smoothed_avg);
   data += ",";
 
   data += String(left_loadcell_volts_v);
@@ -766,8 +1095,7 @@ void send_data() {
   data += String(total_load_lbf);
   data += ",";
 
-  //total_revolution_rev = fabs((rotary_motor.readSteps() - rotary_motor_initial_position_step) / rotary_motor_full_step_rev);
-  total_revolution_rev = fabs((rotary_motor.read() - rotary_motor_initial_position_deg) / 360.00f);
+  // total_revolution_rev = fabs((rotary_motor.read() - rotary_motor_initial_position_deg) / 360.00f);
   data += String(total_revolution_rev);
   data += ",";
 
