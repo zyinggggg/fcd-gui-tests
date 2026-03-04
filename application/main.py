@@ -133,7 +133,7 @@ class App(ctk.CTk):
         self.control_frame.grid(row=0, column=1, rowspan=2, columnspan=1, sticky="nsew", padx=(5, 5), pady=(10,5))
 
         initial_variables_count = sum(1 for entry in self.data.values() if entry.get("state", 0) == 1)
-        self.control_frame.r8_c1.configure(text=f"{initial_variables_count} Selected")
+        self.control_frame.r12_c1.configure(text=f"{initial_variables_count} Selected")
 
         self.surface_frame = SurfaceFrame(self)
         self.surface_frame.grid(row=0, column=2, rowspan=2, columnspan=1, sticky="nsew", padx=(5, 10), pady=(10, 5))

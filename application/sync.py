@@ -312,18 +312,18 @@ class Sync:
                 experiment_elapsed_time = time.time() - self.pid_experiment_start_time
                 hh, rem = divmod(int(experiment_elapsed_time), 3600)
                 mm, ss = divmod(rem, 60)
-                self.parent.control_frame.r12_c1.configure(text=f"{hh:02d}:{mm:02d}:{ss:02d}")
-                self.parent.control_frame.r13_c1.configure(text=self.parent.data["total_revolution_rev"]["value"])
+                self.parent.control_frame.r16_c1.configure(text=f"{hh:02d}:{mm:02d}:{ss:02d}")
+                self.parent.control_frame.r17_c1.configure(text=self.parent.data["total_revolution_rev"]["value"])
                 self.pid_plot_time.append(experiment_elapsed_time)
                 self.pid_plot_load.append(self.parent.data["total_load_lbf"]["value"])
                 if self.pid_target_load_lbf != 0:
                     update_pid_plot(self.parent.pid_frame.ax, (self.pid_plot_time, self.pid_plot_load), target=float(self.pid_target_load_lbf), pid_tuning_mode="Conservative" if self.parent.data["pid_tuning_mode"]["value"] == 0 else "Aggressive")
                 self.parent.pid_frame.canvas_pid.draw()
             else:
-                self.parent.control_frame.r12_c1.configure(text="00:00:00")
+                self.parent.control_frame.r16_c1.configure(text="00:00:00")
 
             if not self.pid_experiment_status and self.pid_experiment_status_old:
-                self.parent.control_frame.r11_c1.set("Stop")
+                self.parent.control_frame.r15_c1.set("Stop")
                 self.experiment_data_count = 0
 
             self.pid_experiment_status_old = self.pid_experiment_status
@@ -335,7 +335,7 @@ class Sync:
 
     def save_experiment_data(self):
         if (self.comm and self.pid_experiment_status and self.parent.control_frame.experiment_directory):
-            experiment_name = self.parent.control_frame.r9_c1.get()
+            experiment_name = self.parent.control_frame.r13_c1.get()
             if not experiment_name.endswith(".xlsx"):
                 experiment_name += ".xlsx"
             
@@ -343,7 +343,7 @@ class Sync:
             
             if experiment_path:
                 try:
-                    self.data_frequency_ms = (int)(self.parent.control_frame.r7_c1.get())
+                    self.data_frequency_ms = (int)(self.parent.control_frame.r11_c1.get())
 
                     if self.experiment_data_count == 0:
                         wb = Workbook()
@@ -362,11 +362,12 @@ class Sync:
                             ["pid_experiment_mode", self.parent.control_frame.r1_c1.get()],
                             ["pid_rotary_motor_speed_rpm", self.parent.control_frame.r2_c1.get()],
                             ["pid_target_load_lbf", self.parent.control_frame.r4_c1.get()],
-                            ["pid_experiment_duration_hh_mm_ss", self.parent.control_frame.r5_c1.get()],
-                            ["data_frequency_ms", self.parent.control_frame.r7_c1.get()],
+                            ["pid_experiment_duration_hh_mm_ss", self.parent.control_frame.r7_c1.get()],
+                            ["data_frequency_ms", self.parent.control_frame.r11_c1.get()],
                             ["pid_rotary_motor_ramplen_step", self.parent.config["pid_rotary_motor_ramplen_step"]],
                             ["pid_z_axis_motor_max_speed_rpm", self.parent.config["pid_z_axis_motor_max_speed_rpm"]],
                             ["pid_z_axis_motor_ramplen_step", self.parent.config["pid_z_axis_motor_ramplen_step"]],
+                            ["pid_calibration_mode", self.parent.config["pid_calibration_mode"]],
                             ["pid_calibration_stable_required_time_ms", self.parent.config["pid_calibration_stable_required_time_ms"]],
                             ["pid_calibration_stable_required_count", self.parent.config["pid_calibration_stable_required_count"]],
                             ["pid_calibration_load_error_percent", self.parent.config["pid_calibration_load_error_percent"]],
@@ -502,7 +503,7 @@ class Sync:
                 self.pid_target_load_lbf = self.parent.control_frame.r4_c1.get()
             else:   
                 self.pid_target_load_lbf = 0
-            pid_experiment_duration_hh_mm_ss = self.parent.control_frame.r5_c1.get()
+            pid_experiment_duration_hh_mm_ss = self.parent.control_frame.r7_c1.get()
 
             hh, mm, ss = map(int, pid_experiment_duration_hh_mm_ss.split(':'))
             self.pid_experiment_duration_ms = (hh*3600 + mm*60 + ss) * 1000

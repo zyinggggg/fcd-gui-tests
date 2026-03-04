@@ -200,110 +200,139 @@ class ControlFrame(ctk.CTkFrame):
         self.experiment_directory = None
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        self.frame0 = ctk.CTkScrollableFrame(self, width = 350, fg_color="#FFFFFF")
+        self.frame0.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+
+        self.frame0.grid_columnconfigure(0, weight=1)
+        self.frame0.grid_columnconfigure(1, weight=0)
 
         # Row 0
-        self.r0_c0 = ctk.CTkLabel(self, text='Device Control', font=("Helvetica", 18, "bold"))
+        self.r0_c0 = ctk.CTkLabel(self.frame0, text='Device Control', font=("Helvetica", 18, "bold"))
         self.r0_c0.grid(row=0, column=0, sticky="w", padx=10, pady=(10, 5))
 
-        self.r0_c1 = ctk.CTkButton(self, text='Advanced Control', command=self.open_advanced_control)
+        self.r0_c1 = ctk.CTkButton(self.frame0, text='Advanced Control', command=self.open_advanced_control)
         self.r0_c1.grid(row=0, column=1, sticky="e", padx=10, pady=(10, 5))
 
         # Row 1
-        self.r1_c0 = ctk.CTkLabel(self, text="Experiment Mode:")
+        self.r1_c0 = ctk.CTkLabel(self.frame0, text="Experiment Mode:")
         self.r1_c0.grid(row=1, column=0, sticky="w", padx=10, pady=2)
 
-        self.r1_c1 = ctk.CTkOptionMenu(self, values=["CW", "CCW", "CW+CCW", "CCW+CW", "Swing"], text_color="#FFFFFF", width=121)
+        self.r1_c1 = ctk.CTkOptionMenu(self.frame0, values=["CW", "CCW", "CW+CCW", "CCW+CW", "Swing"], text_color="#FFFFFF", width=121, command=self.on_swing_mode)
         self.r1_c1.grid(row=1, column=1, sticky="e", padx=10, pady=2)
 
         # Row 2
-        self.r2_c0 = ctk.CTkLabel(self, text=parent.data["rotary_motor_speed_rpm"]["label"]+":")
+        self.r2_c0 = ctk.CTkLabel(self.frame0, text=parent.data["rotary_motor_speed_rpm"]["label"]+":")
         self.r2_c0.grid(row=2, column=0, sticky="w", padx=10, pady=2)
 
-        self.r2_c1 = ctk.CTkEntry(self, justify="right", width=121)
+        self.r2_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
         self.r2_c1.grid(row=2, column=1, sticky="e", padx=10, pady=2)
 
         # Row 3
-        self.r3_c0 = ctk.CTkLabel(self, text="Apply Load:")
+        self.r3_c0 = ctk.CTkLabel(self.frame0, text="Apply Load:")
         self.r3_c0.grid(row=3, column=0, sticky="w", padx=10, pady=2)
 
-        self.r3_c1 = ctk.CTkSegmentedButton(self, values=["No", "Yes"], command=self.set_pid_target_load_lbf)
+        self.r3_c1 = ctk.CTkSegmentedButton(self.frame0, values=["No", "Yes"], command=self.set_pid_target_load_lbf)
         self.r3_c1.grid(row=3, column=1, sticky="e", padx=10, pady=2)
         self.r3_c1.set("No")
 
         # Row 4
-        self.r4_c0 = ctk.CTkLabel(self, text='Target Load (lbf):')
+        self.r4_c0 = ctk.CTkLabel(self.frame0, text='Target Load (lbf):')
         self.r4_c0.grid(row=4, column=0, sticky="w", padx=10, pady=2)
 
-        self.r4_c1 = ctk.CTkEntry(self, justify="right", width=121)
+        self.r4_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
         self.r4_c1.grid(row=4, column=1, sticky="e", padx=10, pady=2)
 
         # Row 5
-        self.r5_c0 = ctk.CTkLabel(self, text='Experiment Duration (hh:mm:ss):')
-        self.r5_c0.grid(row=5, column=0, sticky="w", padx=10, pady=2)
-        
-        self.r5_c1 = ctk.CTkEntry(self, justify="right", width=121)
-        self.r5_c1.grid(row=5, column=1, sticky="e", padx=10, pady=2)
-        self.r5_c1.insert(0, "00:00:00")
+        self.r5_c0 = ctk.CTkLabel(self.frame0, text='Rev Per Cycle:')
+
+        self.r5_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
 
         # Row 6
-        self.r6_c0 = ctk.CTkLabel(self, text='Data Acquisition', font=("Helvetica", 18, "bold"))
-        self.r6_c0.grid(row=6, column=0, sticky="w", padx=10, pady=(10, 5))
-
-        self.r6_c1 = ctk.CTkSegmentedButton(self, values=["Disable", "Enable"], command=self.set_data_acquisition)
-        self.r6_c1.grid(row=6, column=1, sticky="e", padx=10, pady=(10, 5))
-        self.r6_c1.set("Disable")
+        self.r6_c0 = ctk.CTkLabel(self.frame0, text='Run Limit Type:')
+        self.r6_c0.grid(row=6, column=0, sticky="w", padx=10, pady=2)
+        
+        self.r6_c1 = ctk.CTkOptionMenu(self.frame0, values=["Time", "Revolution"], text_color="#FFFFFF", width=121, command=self.on_run_limit_type_change)
+        self.r6_c1.grid(row=6, column=1, sticky="e", padx=10, pady=2)
 
         # Row 7
-        self.r7_c0 = ctk.CTkLabel(self, text='Data Frequency (ms):')
+        self.r7_c0 = ctk.CTkLabel(self.frame0, text='Duration (hh:mm:ss):')
         self.r7_c0.grid(row=7, column=0, sticky="w", padx=10, pady=2)
-
-        self.r7_c1 = ctk.CTkEntry(self, justify="right", width=121)
+        
+        self.r7_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
         self.r7_c1.grid(row=7, column=1, sticky="e", padx=10, pady=2)
+        self.r7_c1.insert(0, "00:00:00")
 
         # Row 8
-        self.r8_c0 = ctk.CTkLabel(self, text='Variable Selection:')
+        self.r8_c0 = ctk.CTkLabel(self.frame0, text='Total Rev:')
         self.r8_c0.grid(row=8, column=0, sticky="w", padx=10, pady=2)
-
-        self.r8_c1 = ctk.CTkButton(self, text="", command=self.open_variable_selection, width=121)
-        self.r8_c1.grid(row=8, column=1, sticky="e", padx=10, pady=2)
-        self.r8_c1.configure(text="0 Selected")
+        
+        self.r8_c1 = ctk.CTkLabel(self.frame0, text='0')
+        self.r8_c1.grid(row=8, column=1, sticky="e", padx=10, pady=(2, 0))
 
         # Row 9
-        self.r9_c0 = ctk.CTkLabel(self, text='Experiment Name:')
-        self.r9_c0.grid(row=9, column=0, sticky="w", padx=10, pady=2)
-
-        self.r9_c1 = ctk.CTkEntry(self, justify="right", width=121)
-        self.r9_c1.grid(row=9, column=1, sticky="e", padx=10, pady=2)
+        self.r9_c1 = ctk.CTkLabel(self.frame0, text='(CW: 0   CCW: 0)', font=("Helvetica", 10, "italic"))
+        self.r9_c1.grid(row=9, column=1, sticky="e", padx=10, pady=0)
 
         # Row 10
-        self.r10_c0 = ctk.CTkLabel(self, text='Save to:')
-        self.r10_c0.grid(row=10, column=0, sticky="w", padx=10, pady=2)
+        self.r10_c0 = ctk.CTkLabel(self.frame0, text='Data Acquisition', font=("Helvetica", 18, "bold"))
+        self.r10_c0.grid(row=10, column=0, sticky="w", padx=10, pady=(10, 5))
 
-        self.r10_c1 = ctk.CTkButton(self, text="Browse 📂", command=self.browse_experiment_directory, width=121)
-        self.r10_c1.grid(row=10, column=1, sticky="e", padx=10, pady=2)
+        self.r10_c1 = ctk.CTkSegmentedButton(self.frame0, values=["Disable", "Enable"], command=self.set_data_acquisition)
+        self.r10_c1.grid(row=10, column=1, sticky="e", padx=10, pady=(10, 5))
+        self.r10_c1.set("Disable")
 
         # Row 11
-        self.r11_c0 = ctk.CTkLabel(self, text='Experiment Status', font=("Helvetica", 18, "bold"))
-        self.r11_c0.grid(row=11, column=0, sticky="w", padx=10, pady=(10, 5))
+        self.r11_c0 = ctk.CTkLabel(self.frame0, text='Data Frequency (ms):')
+        self.r11_c0.grid(row=11, column=0, sticky="w", padx=10, pady=2)
 
-        self.r11_c1 = ctk.CTkSegmentedButton(self, values=["Stop", "Start"], command=self.on_pid_control)
-        self.r11_c1.grid(row=11, column=1, sticky="e", padx=10, pady=(10, 5))
-        self.r11_c1.set("Stop")
+        self.r11_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
+        self.r11_c1.grid(row=11, column=1, sticky="e", padx=10, pady=2)
 
         # Row 12
-        self.r12_c0 = ctk.CTkLabel(self, text='Run Time (hh:mm:ss):')
+        self.r12_c0 = ctk.CTkLabel(self.frame0, text='Variable Selection:')
         self.r12_c0.grid(row=12, column=0, sticky="w", padx=10, pady=2)
 
-        self.r12_c1 = ctk.CTkLabel(self, text="00:00:00")
+        self.r12_c1 = ctk.CTkButton(self.frame0, text="", command=self.open_variable_selection, width=121)
         self.r12_c1.grid(row=12, column=1, sticky="e", padx=10, pady=2)
+        self.r12_c1.configure(text="0 Selected")
 
         # Row 13
-        self.r13_c0 = ctk.CTkLabel(self, text='Total Rev:')
+        self.r13_c0 = ctk.CTkLabel(self.frame0, text='Experiment Name:')
         self.r13_c0.grid(row=13, column=0, sticky="w", padx=10, pady=2)
 
-        self.r13_c1 = ctk.CTkLabel(self, text="0.00")
+        self.r13_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
         self.r13_c1.grid(row=13, column=1, sticky="e", padx=10, pady=2)
+
+        # Row 14
+        self.r14_c0 = ctk.CTkLabel(self.frame0, text='Save to:')
+        self.r14_c0.grid(row=14, column=0, sticky="w", padx=10, pady=2)
+
+        self.r14_c1 = ctk.CTkButton(self.frame0, text="Browse 📂", command=self.browse_experiment_directory, width=121)
+        self.r14_c1.grid(row=14, column=1, sticky="e", padx=10, pady=2)
+
+        # Row 15
+        self.r15_c0 = ctk.CTkLabel(self.frame0, text='Experiment Status', font=("Helvetica", 18, "bold"))
+        self.r15_c0.grid(row=15, column=0, sticky="w", padx=10, pady=(10, 5))
+
+        self.r15_c1 = ctk.CTkSegmentedButton(self.frame0, values=["Stop", "Start"], command=self.on_pid_control)
+        self.r15_c1.grid(row=15, column=1, sticky="e", padx=10, pady=(10, 5))
+        self.r15_c1.set("Stop")
+
+        # Row 16
+        self.r16_c0 = ctk.CTkLabel(self.frame0, text='Run Time (hh:mm:ss):')
+        self.r16_c0.grid(row=16, column=0, sticky="w", padx=10, pady=2)
+
+        self.r16_c1 = ctk.CTkLabel(self.frame0, text="00:00:00")
+        self.r16_c1.grid(row=16, column=1, sticky="e", padx=10, pady=2)
+
+        # Row 17
+        self.r17_c0 = ctk.CTkLabel(self.frame0, text='Total Running Rev:')
+        self.r17_c0.grid(row=17, column=0, sticky="w", padx=10, pady=2)
+
+        self.r17_c1 = ctk.CTkLabel(self.frame0, text="0.00")
+        self.r17_c1.grid(row=17, column=1, sticky="e", padx=10, pady=2)
 
         self.set_pid_target_load_lbf("No")
         self.set_data_acquisition("Disable")
@@ -314,16 +343,38 @@ class ControlFrame(ctk.CTkFrame):
         else:
             self.parent.advanced_control.focus()
 
-    def set_data_acquisition(self, value):
-        state = "disabled" if value == "Disable" else "normal"
-        self.r7_c1.configure(state=state)
-        self.r8_c1.configure(state=state)
-        self.r9_c1.configure(state=state)
-        self.r10_c1.configure(state=state)
-
     def set_pid_target_load_lbf(self, value):
         state = "disabled" if value == "No" else "normal"
         self.r4_c1.configure(state=state)
+
+    def on_swing_mode(self, experiment_mode):
+        if experiment_mode == "Swing":
+            self.r5_c0.grid(row=5, column=0, sticky="w", padx=10, pady=2)
+            self.r5_c1.grid(row=5, column=1, sticky="e", padx=10, pady=2)
+        else:
+            self.r5_c0.grid_remove()
+            self.r5_c1.grid_remove()
+
+    def on_run_limit_type_change(self, run_limit_type):
+        self.r7_c1.delete(0, "end")
+        if run_limit_type == "Time":
+            self.r7_c0.configure(text="Duration (hh:mm:ss):")
+            self.r7_c1.insert(0, "00:00:00")
+            self.r8_c0.configure(text="Total Rev:")
+            self.r8_c1.configure(text="0")
+
+        elif run_limit_type == "Revolution":
+            self.r7_c0.configure(text="Total Rev:")
+            self.r7_c1.insert(0, "0")
+            self.r8_c0.configure(text="Duration (hh:mm:ss):")
+            self.r8_c1.configure(text="00:00:00")
+
+    def set_data_acquisition(self, value):
+        state = "disabled" if value == "Disable" else "normal"
+        self.r11_c1.configure(state=state)
+        self.r12_c1.configure(state=state)
+        self.r13_c1.configure(state=state)
+        self.r14_c1.configure(state=state)
 
     def open_variable_selection(self):
         if self.parent.variable_selection is None or not self.parent.variable_selection.winfo_exists():
@@ -340,7 +391,7 @@ class ControlFrame(ctk.CTkFrame):
             self.parent.sync.pid_experiment()
         elif control == "Stop":
             self.parent.sync.pid_experiment_terminate()
-                
+
 class SurfaceFrame(ctk.CTkFrame):
     def __init__(self, parent):
         super().__init__(parent, fg_color="#FFFFFF")

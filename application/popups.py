@@ -84,6 +84,10 @@ class AdvancedSettings(ctk.CTkToplevel):
         self.frame0.grid_columnconfigure(3, weight=45, uniform="Silent_Creme")
 
         for key, entry in parent.config.items():
+
+            if key == "pid_calibration_mode":
+                continue
+
             label = ctk.CTkLabel(master=self.frame0, text=key)
             label.grid(row=self.frame0_row, column=0, sticky="w", padx=10, pady=2)
 
@@ -100,7 +104,9 @@ class AdvancedSettings(ctk.CTkToplevel):
 
                 option = ctk.CTkSegmentedButton(self.frame0, values=["Time", "Count"], command=self.set_pid_calibration_mode)
                 option.grid(row=self.frame0_row, column=3, sticky="e", padx=10, pady=2)
-                option.set("Count")
+                initial_mode = "Time" if str(parent.config.get("pid_calibration_mode", "0")) == "1" else "Count"
+                option.set(initial_mode)
+                self.set_pid_calibration_mode_option = option
 
                 self.frame0_row += 1
 
@@ -112,6 +118,8 @@ class AdvancedSettings(ctk.CTkToplevel):
 
         self.configure_button = ctk.CTkButton(master=self.frame0, text="Configure", command=self.configure, width=121)
         self.configure_button.grid(row=self.frame0_row, column=3, sticky="e", padx=10, pady=2)
+
+        self.set_pid_calibration_mode(self.set_pid_calibration_mode_option.get())
     
     def set_pid_calibration_mode(self, value):
         if value == "Time":
@@ -124,11 +132,14 @@ class AdvancedSettings(ctk.CTkToplevel):
     def configure(self):
         config = self.parent.config
         for key in list(config.keys()):
+            if key == "pid_calibration_mode":
+                continue
             value = getattr(self, f"{key}_value").get().strip()
             if value:
                 config[key] = value
 
         with open(self.parent.config_path, "w") as f:
+            config["pid_calibration_mode"] = "1" if self.set_pid_calibration_mode_option.get() == "Time" else "0"
             json.dump(self.parent.config, f, indent=4)
 
         self.destroy()
@@ -613,7 +624,7 @@ class VariableSelection(ctk.CTkToplevel):
         entry["state"] = 1 if getattr(self, f"{k}_switch").get() else 0
 
         variables_count = sum(1 for entry in self.parent.data.values() if entry.get("state", 0) == 1)
-        self.parent.control_frame.r8_c1.configure(text=f"{variables_count} Selected")
+        self.parent.control_frame.r12_c1.configure(text=f"{variables_count} Selected")
 
 class PIDResults(ctk.CTkToplevel):
     def __init__(self, parent):

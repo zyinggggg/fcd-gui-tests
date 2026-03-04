@@ -10,6 +10,7 @@
     "pid_rotary_motor_ramplen_step": "20",
     "pid_z_axis_motor_max_speed_rpm": "50",
     "pid_z_axis_motor_ramplen_step": "5",
+    "pid_calibration_mode": "0",
     "pid_calibration_stable_required_time_ms": "3000",
     "pid_calibration_stable_required_count": "3",
     "pid_calibration_load_error_percent": "5",

@@ -215,19 +215,6 @@ class Comm:
         except Exception:
             pass
 
-    def pid_calibration(self, pid_calibration_mode):
-        try:
-            if pid_calibration_mode == "count":
-                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x22, 0x00))
-                log("#631", "Application", "The command has been sent to the controller to initiate calibration mode (Count).")
-            elif pid_calibration_mode == "time":
-                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x22, 0x01))
-                log("#632", "Application", "The command has been sent to the controller to initiate calibration mode (Count).")
-            else:
-                pass
-        except Exception:
-            pass
-
     # ==================== FLASH TEST COMMANDS ====================
     def flash_write(self, message="Hello from GUI!", callback=None):
         try:
