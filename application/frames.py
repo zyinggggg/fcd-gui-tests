@@ -219,7 +219,7 @@ class ControlFrame(ctk.CTkFrame):
         self.r1_c0 = ctk.CTkLabel(self.frame0, text="Experiment Mode:")
         self.r1_c0.grid(row=1, column=0, sticky="w", padx=10, pady=2)
 
-        self.r1_c1 = ctk.CTkOptionMenu(self.frame0, values=["CW", "CCW", "CW+CCW", "CCW+CW", "Swing"], text_color="#FFFFFF", width=121, command=self.on_swing_mode)
+        self.r1_c1 = ctk.CTkOptionMenu(self.frame0, values=["CW", "CCW", "CW+CCW", "CCW+CW", "Swing"], text_color="#FFFFFF", width=121, command=self.on_experiment_mode_change)
         self.r1_c1.grid(row=1, column=1, sticky="e", padx=10, pady=2)
 
         # Row 2
@@ -228,6 +228,7 @@ class ControlFrame(ctk.CTkFrame):
 
         self.r2_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
         self.r2_c1.grid(row=2, column=1, sticky="e", padx=10, pady=2)
+        self.r2_c1.bind("<KeyRelease>", lambda e: self.calculate_run_limit())
 
         # Row 3
         self.r3_c0 = ctk.CTkLabel(self.frame0, text="Apply Load:")
@@ -263,6 +264,7 @@ class ControlFrame(ctk.CTkFrame):
         self.r7_c1 = ctk.CTkEntry(self.frame0, justify="right", width=121)
         self.r7_c1.grid(row=7, column=1, sticky="e", padx=10, pady=2)
         self.r7_c1.insert(0, "00:00:00")
+        self.r7_c1.bind("<KeyRelease>", lambda e: self.calculate_run_limit())
 
         # Row 8
         self.r8_c0 = ctk.CTkLabel(self.frame0, text='Total Rev:')
@@ -347,13 +349,15 @@ class ControlFrame(ctk.CTkFrame):
         state = "disabled" if value == "No" else "normal"
         self.r4_c1.configure(state=state)
 
-    def on_swing_mode(self, experiment_mode):
+    def on_experiment_mode_change(self, experiment_mode):
         if experiment_mode == "Swing":
             self.r5_c0.grid(row=5, column=0, sticky="w", padx=10, pady=2)
             self.r5_c1.grid(row=5, column=1, sticky="e", padx=10, pady=2)
         else:
             self.r5_c0.grid_remove()
             self.r5_c1.grid_remove()
+        
+        self.calculate_run_limit()
 
     def on_run_limit_type_change(self, run_limit_type):
         self.r7_c1.delete(0, "end")
@@ -368,6 +372,54 @@ class ControlFrame(ctk.CTkFrame):
             self.r7_c1.insert(0, "0")
             self.r8_c0.configure(text="Duration (hh:mm:ss):")
             self.r8_c1.configure(text="00:00:00")
+    
+    def calculate_run_limit(self):
+        try:
+            rotary_motor_speed_rpm = float(self.r2_c1.get())
+            if rotary_motor_speed_rpm <= 0:
+                return
+
+            run_limit_type = self.r6_c1.get()
+            experiment_mode = self.r1_c1.get()
+
+            if run_limit_type == "Revolution":
+                total_rev = float(self.r7_c1.get())
+                total_duration_s = int((total_rev/rotary_motor_speed_rpm) * 60)
+                hh = total_duration_s // 3600
+                mm = (total_duration_s % 3600) // 60
+                ss = total_duration_s % 60
+                self.r8_c1.configure(text=f"{hh:02d}:{mm:02d}:{ss:02d}")
+            else:
+                hh, mm, ss = map(int, self.r7_c1.get().split(':'))
+                duration_s = (hh * 3600) + (mm * 60) + ss
+                total_rev = (duration_s / 60.0) * rotary_motor_speed_rpm
+                self.r8_c1.configure(text=f"{total_rev:.2f}")
+            
+            import math
+            total_rev = float(total_rev)
+
+            if experiment_mode == "CW":
+                cw = total_rev
+                ccw = 0.0
+            elif experiment_mode == "CCW":
+                cw = 0.0
+                ccw = total_rev
+            elif experiment_mode == "CW+CCW":
+                ccw = math.floor(total_rev / 2)
+                cw = total_rev - ccw
+            elif experiment_mode == "CCW+CW":
+                cw = math.floor(total_rev / 2)
+                ccw = total_rev - cw
+            elif experiment_mode == "Swing":
+                ccw = math.floor(total_rev / 2)
+                cw  = total_rev - ccw
+            else:
+                cw, ccw = 0.0, 0.0
+            
+            self.r9_c1.configure(text=f"(CW: {cw}   CCW: {ccw})")
+            
+        except Exception:
+            pass
 
     def set_data_acquisition(self, value):
         state = "disabled" if value == "Disable" else "normal"

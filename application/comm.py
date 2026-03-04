@@ -185,22 +185,22 @@ class Comm:
         except Exception:
             pass
 
-    def pid_experiment(self, pid_experiment_mode, pid_rotary_motor_speed_rpm, pid_target_load_lbf, pid_experiment_duration_ms):
+    def pid_experiment(self, pid_experiment_mode, pid_rotary_motor_speed_rpm, pid_target_load_lbf, pid_experiment_revolution_rev):
         try:
             if pid_experiment_mode == "CW":
-                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x00, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), int(pid_experiment_duration_ms)))
+                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x00, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), float(pid_experiment_revolution_rev)))
                 log("#625", "Application", "The command has been sent to the controller to initiate experiment (CW).")
             elif pid_experiment_mode == "CCW":
-                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x01, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), int(pid_experiment_duration_ms)))
+                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x01, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), float(pid_experiment_revolution_rev)))
                 log("#626", "Application", "The command has been sent to the controller to initiate experiment (CCW).")
             elif pid_experiment_mode == "CW+CCW":
-                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x02, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), int(pid_experiment_duration_ms)))
+                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x02, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), float(pid_experiment_revolution_rev)))
                 log("#627", "Application", "The command has been sent to the controller to initiate experiment (CW+CCW).")
             elif pid_experiment_mode == "CCW+CW":
-                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x03, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), int(pid_experiment_duration_ms)))
+                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x03, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), float(pid_experiment_revolution_rev)))
                 log("#628", "Application", "The command has been sent to the controller to initiate experiment (CCW+CW).")
             elif pid_experiment_mode == "Swing":
-                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x04, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), int(pid_experiment_duration_ms)))
+                self._serial.write(struct.pack('<BBBfdL', 0xAA, 0x20, 0x04, float(pid_rotary_motor_speed_rpm), float(pid_target_load_lbf), float(pid_experiment_revolution_rev)))
                 log("#629", "Application", "The command has been sent to the controller to initiate experiment (Swing).")
             else:
                 pass

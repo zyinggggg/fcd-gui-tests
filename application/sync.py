@@ -309,11 +309,17 @@ class Sync:
                 self.pid_plot_load.clear()
 
             if self.pid_experiment_status:
+                total_rev = self.parent.data["total_revolution_rev"]["value"]
+                rotary_motor_speed_rpm = float(self.parent.control_frame.r2_c1.get() or 0)
+                if rotary_motor_speed_rpm > 0:
+                    elapsed_s = int((total_rev / rotary_motor_speed_rpm) * 60)
+                    hh, rem = divmod(elapsed_s,3600)
+                    mm, ss = divmod(rem, 60)
+                    self.parent.control_frame.r16_c1.configure(text=f"{hh:02d}:{mm:02d}:{ss:02d}")
+                self.parent.control_frame.r17_c1.configure(text=f"{total_rev:.3f}")
+
                 experiment_elapsed_time = time.time() - self.pid_experiment_start_time
-                hh, rem = divmod(int(experiment_elapsed_time), 3600)
-                mm, ss = divmod(rem, 60)
-                self.parent.control_frame.r16_c1.configure(text=f"{hh:02d}:{mm:02d}:{ss:02d}")
-                self.parent.control_frame.r17_c1.configure(text=self.parent.data["total_revolution_rev"]["value"])
+
                 self.pid_plot_time.append(experiment_elapsed_time)
                 self.pid_plot_load.append(self.parent.data["total_load_lbf"]["value"])
                 if self.pid_target_load_lbf != 0:
@@ -498,17 +504,23 @@ class Sync:
     def pid_experiment(self):
         if self.comm:
             pid_experiment_mode = self.parent.control_frame.r1_c1.get()
-            pid_rotary_motor_speed_rpm = self.parent.control_frame.r2_c1.get()
+            pid_rotary_motor_speed_rpm = float(self.parent.control_frame.r2_c1.get())
             if self.parent.control_frame.r3_c1.get() == "Yes":
                 self.pid_target_load_lbf = self.parent.control_frame.r4_c1.get()
             else:   
                 self.pid_target_load_lbf = 0
-            pid_experiment_duration_hh_mm_ss = self.parent.control_frame.r7_c1.get()
 
-            hh, mm, ss = map(int, pid_experiment_duration_hh_mm_ss.split(':'))
-            self.pid_experiment_duration_ms = (hh*3600 + mm*60 + ss) * 1000
+            run_limit_type = self.parent.control_frame.r6_c1.get()
 
-            self.comm.pid_experiment(pid_experiment_mode, pid_rotary_motor_speed_rpm, self.pid_target_load_lbf, self.pid_experiment_duration_ms)
+            if run_limit_type == "Revolution":
+                pid_experiment_revolution_rev = float(self.parent.control_frame.r7_c1.get())
+            else :
+                pid_experiment_duration_hh_mm_ss = self.parent.control_frame.r7_c1.get()
+                hh, mm, ss = map(int, pid_experiment_duration_hh_mm_ss.split(':'))
+                duration_s = (hh*3600) + (mm*60) + ss
+                pid_experiment_revolution_rev = (duration_s/60.0) * pid_rotary_motor_speed_rpm
+
+            self.comm.pid_experiment(pid_experiment_mode, pid_rotary_motor_speed_rpm, self.pid_target_load_lbf, pid_experiment_revolution_rev)
         else:
             pass
 
